@@ -64,3 +64,47 @@ result = calculate_difference(session)
 print(result)
 print(session.model_dump())
 print(f"Worker paid: {session.rate}, Legal minimum: {legal_wage}")
+
+
+
+
+file_bytes = await file.read()
+with open("temp_worker_doc.pdf", "wb") as data_bytes:
+       data_bytes.write(file_bytes)
+       #region what's happening in the above line?
+       """After opening the uploaded gig worker's pdf file we open a new blank file called data_bytes, this is like a variable(actually a file) for us
+       to work inside the 'with open()' block, and we store the binary data read by 'await file.read()' in file_bytes, since we can't directly deal with 
+       data_bytes inside the with block, we come out and call 'extract_pdf_text' from document_parser.py to extract information. """
+       #endregion
+try:
+        extracted_text = extract_pdf_text("temp_worker_doc.pdf")
+        #region File errors
+        """ We are placing this line inside try block because if a .jpeg is renamed to .pdf and uploaded then inside try block 
+        it shows us error, but outside try block this error will lead to system crash, which is not good."""
+        #endregion
+        initial_input = {'raw_text': extracted_text}
+        #region What if there's no error in file but in AI
+        """If the file is not mishandled or corrupt pdf is not uploaded but if the AI is offline, if the above line is outside the try block it would crash
+        but here since it is inside the try block, in case it finds any error it jumps to except block."""
+        #endregion
+        final_state = await asyncio.to_thread(app.invoke, initial_input)
+        return {
+            "status": "Success",
+            "final_result": final_state
+        }
+except Exception as e:
+        return {
+            "status": "Failed",
+            "error_message": "Unfortunately the data you provided is not valid"
+        }
+
+ return { 
+        "receipt_id" : math_result["receipt_id"],
+        "shift_date": str(session.shift_date),
+        "status": math_result["status"],
+        "audit_details": {
+            "hours_worked": float(session.hours),
+            "rate": float(session.rate),
+            "discrepancy": float(math_result["discrepancy"]),
+            "Conclusion": math_result["status"]
+        } }

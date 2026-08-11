@@ -169,24 +169,26 @@ client.upsert(
 
 def ocr_ingestion_node(state: AuditState):
     extracted_text = state["raw_text"]
-    with Image.open("dummy.png") as image_object:
-        extracted_text += "\n\n" + pytesseract.image_to_string(image_object)
-        return{"raw_text": extracted_text}
+    for image in state["image_paths"]:
+        with Image.open(image) as image_object:
+            extracted_text += "\n\n" + pytesseract.image_to_string(image_object)
+    return{"raw_text": extracted_text}
 
 def pdf_ingestion_node(state: AuditState):
-    with pdfplumber.open("dummy.pdf") as pdf_object:
-        #region What is 'with' in the above line?
-        """When you use python's 'open()' this is like a room which takes the file opens, reads and expects the programmer's close()
-        command. Nevertheless, we've got another special room called 'with open()', just because the keyword 'with' is present, 
-        you enter a special room to read file, it takes the file reads, processes and closes on itself the second your code finishes
-        reading your file!!! If we use this, we wouldn't have to worry about MEMEORY LEAK, because in case the code crashes 'with' 
-        statement mathematically guarantees that it will close the file and unlock the file before the program dies"""
-        #endregion
-        full_text = []
-        for page in pdf_object.pages:
-            full_text.append(page.extract_text() or "")
-        combined_text = "\n".join(full_text)
-        return{"raw_text":combined_text}
+    full_text = [state["raw_text"]]
+    for pdf in state["pdf_paths"]:
+        with pdfplumber.open(pdf) as pdf_object:
+            #region What is 'with' in the above line?
+            """When you use python's 'open()' this is like a room which takes the file opens, reads and expects the programmer's close()
+            command. Nevertheless, we've got another special room called 'with open()', just because the keyword 'with' is present, 
+            you enter a special room to read file, it takes the file reads, processes and closes on itself the second your code finishes
+            reading your file!!! If we use this, we wouldn't have to worry about MEMEORY LEAK, because in case the code crashes 'with' 
+            statement mathematically guarantees that it will close the file and unlock the file before the program dies"""
+            #endregion
+            for page in pdf_object.pages:
+                full_text.append(page.extract_text() or "")
+            combined_text = "\n".join(full_text)
+    return{"raw_text":combined_text}
 
 def mask_data_node(state: AuditState):
     """In this node the worker's private data is redacted """
@@ -275,7 +277,7 @@ def calculation_node(state: AuditState):
             "discrepancy": float(math_result["discrepancy"]),
             "Conclusion": math_result["status"]
         } }
-    supabase_db.table("explainability_logs").insert(log_record).execute()
+    supabase_db.table("explainability_logs").upsert(log_record).execute()
     return {"final_status": math_result["status"], "receipt_id" : math_result["receipt_id"]}
 
 def route_from_start(state:AuditState):
@@ -289,6 +291,8 @@ def route_from_start(state:AuditState):
 def route_from_pdf(state: AuditState):
     if len(state["image_paths"])>0:
         return "ocr_ingestion"
+    else:
+        return "mask_data"
 workflow = StateGraph(AuditState) #Start the engine and memorize the the blueprint 'AuditState'
 workflow.add_node("pdf_ingestion", pdf_ingestion_node)
 workflow.add_node("ocr_ingestion", ocr_ingestion_node)

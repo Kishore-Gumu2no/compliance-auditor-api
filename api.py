@@ -27,7 +27,6 @@ from orchestrator import app, run_audit, supabase_db
 import json
 import asyncio
 import hashlib
-from document_parser import extract_pdf_text
 from typing import List, Annotated
 
 async def run_delivery_streams():
