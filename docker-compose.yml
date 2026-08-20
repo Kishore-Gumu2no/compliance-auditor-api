@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  # Backend API Service
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fairpay-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - QDRANT_URL=${QDRANT_URL}
+      - QDRANT_API_KEY=${QDRANT_API_KEY}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - TESSERACT_PATH=/usr/bin/tesseract
+    volumes:
+      - ./real_laws.json:/app/real_laws.json:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Frontend Development Server (optional, for local development)
+  frontend-dev:
+    build:
+      context: ./frontend/frontend
+      dockerfile: Dockerfile.dev
+    container_name: fairpay-frontend-dev
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_BASE_URL=http://backend:8000
+      - VITE_DEMO_MODE=false
+    volumes:
+      - ./frontend/frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    profiles:
+      - dev
+
+  # Frontend Production Build (for testing production build locally)
+  frontend-prod:
+    build:
+      context: ./frontend/frontend
+      dockerfile: Dockerfile.prod
+    container_name: fairpay-frontend-prod
+    ports:
+      - "3000:80"
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000
+      - VITE_DEMO_MODE=false
+    depends_on:
+      - backend
+    profiles:
+      - prod
+
+networks:
+  default:
+    name: fairpay-network

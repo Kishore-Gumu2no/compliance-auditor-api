@@ -1,0 +1,19 @@
+/* FairPay Engine - Global Styles */
+/* This file imports the main App.css which contains all design system tokens and component styles */
+
+/* Ensure full height for root */
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Prevent horizontal scroll */
+body {
+  overflow-x: hidden;
+}
