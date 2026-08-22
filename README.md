@@ -4,9 +4,9 @@
 
 ---
 
-## Problem & Solution (98 words)
+## Problem & Solution
 
-**Problem:** Gig delivery partners have no visibility into pay fairness. Platform algorithms are opaque, earnings fragmented, labor law compliance unenforced. Partners work 12+ hour shifts not knowing if they're below minimum wage.
+**Problem:** Delivery partners lack a central platform to track their earnings and make sure if they are being paid rightfully. Partners work 12+ hour shifts not knowing if they're below minimum wage.
 
 **Solution:** FairPay Engine is a zero-trust compliance auditor. It streams live earnings via WebSocket, accepts evidence uploads with PII redacted *before* AI processing (Microsoft Presidio), runs automated audits through a LangGraph pipeline (OCR → Extraction → Qdrant labor-law RAG → Groq Llama 3.3 verdict), and returns SHA-256 receipted results. Personal data never stored; only anonymized outcomes retained.
 
@@ -17,24 +17,26 @@
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  PUBLIC DEMO (Vercel)                                           │
-│  React Frontend → Simulated WebSocket + Sample Audit Data      │
+│  React Frontend → Simulated WebSocket + Sample Audit Data       │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  LOCAL FULL SYSTEM (Docker)                                     │
-│  React Frontend ←→ FastAPI Backend ←→ AI/ML Pipeline           │
+│  React Frontend ←→ FastAPI Backend ←→ AI/ML Pipeline            │
 │                         │                                       │
 │                         ├── LangGraph Orchestrator              │
-│                         ├── Groq (Llama 3.3 70B) + Instructor   │
+│                         ├── LLM + Instructor                    │
 │                         ├── Qdrant Vector DB (Temporal Laws)    │
-│                         ├── Supabase (Audit Logs + Auth)        │
+│                         ├── Local Supabase Stack (PostgreSQL    │
+│                         │    + Auth + REST + Realtime + Storage │
+│                         │    + Studio) — ALL IN CONTAINERS      │
 │                         ├── Tesseract OCR + pdfplumber          │
 │                         └── Microsoft Presidio (PII Masking)    │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-**Key decision:** Frontend auto-detects environment. On `localhost` → real backend. Any other host (Vercel) → demo mode with simulated data — zero backend dependency.
+**Key decision:** Frontend auto-detects environment. On `localhost` → real backend + local Supabase. Any other host (Vercel) → demo mode with simulated data.
 
 ---
 
@@ -48,7 +50,7 @@
 | **Orchestration** | LangGraph | Stateful, cyclic graphs for multi-step audit pipeline; better than linear chains |
 | **LLM** | Groq (Llama 3.3 70B) via Instructor | Sub-second inference; structured output enforcement; free tier |
 | **Vector DB** | Qdrant Cloud | Managed, filtered vector search; temporal law queries need metadata filtering |
-| **Database** | Supabase (PostgreSQL) | Auth + Realtime + Storage + Postgres; row-level security for audit isolation |
+| **Database** | Local Supabase (PostgreSQL + Auth + REST + Realtime + Storage) | Full Supabase stack in containers; zero cloud dependency; data never leaves machine |
 | **OCR** | Tesseract + pdfplumber | Open-source, handles images + PDFs; containerized |
 | **PII Redaction** | Microsoft Presidio | Industry-standard NER + patterns; runs locally, zero data egress |
 | **Containerization** | Docker + Docker Compose | One-command full stack; identical dev/prod; interviewer runs `docker-compose up` |
@@ -58,28 +60,30 @@
 
 ## Quick Start
 
-### Full Local System (Recommended for Interviews)
+### Full Local System (Single Command)
 ```bash
 git clone <repo>
 cd compliance-auditor
-cp .env.example .env   # Add GROQ, QDRANT, SUPABASE keys
+cp .env.example .env   # Add your GROQ_API_KEY, QDRANT_URL, QDRANT_API_KEY
 docker-compose up --build
 # Frontend: http://localhost:5173  |  Backend: http://localhost:8000  |  API Docs: /docs
+# Supabase Studio: http://localhost:54323
 ```
 
-### Frontend Demo Only (No Keys Needed)
-```bash
-cd frontend/frontend
-npm install
-VITE_DEMO_MODE=true npm run dev
-```
+**Requires:** Docker, Groq API key (free), Qdrant Cloud key (free tier).  
+**No Supabase account needed** — runs entirely in local containers.
 
-### Deploy to Vercel (3 minutes)
-1. Push to GitHub
-2. Vercel → New Project → Root: `frontend/frontend`
-3. Env: `VITE_DEMO_MODE=true`
-4. Deploy → Live demo URL
+See **[HOW_TO_RUN.md](HOW_TO_RUN.md)** for detailed steps, troubleshooting, and architecture notes.
 
 ---
 
-**Built for delivery partner empowerment.** ⚖️
+## Demo Deployment (Vercel)
+
+Frontend-only demo with simulated data — no backend required:
+
+1. Push to GitHub
+2. Vercel → New Project → Root: `frontend/frontend`
+3. Env: `VITE_DEMO_MODE=true`
+4. Deploy
+
+Live demo URL: fully functional UI with sample audits, simulated earnings, animated audit progress.

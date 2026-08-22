@@ -1,6 +1,151 @@
 version: '3.8'
 
+# ═══════════════════════════════════════════════════════════════
+# FAIRPAY ENGINE — FULL LOCAL STACK
+# ═══════════════════════════════════════════════════════════════
+# Single command: docker-compose up --build
+#
+# Includes:
+#   • Backend (FastAPI) + Frontend (Vite/React)
+#   • Local Supabase stack: PostgreSQL, Auth, REST, Realtime, Storage, Studio
+#   • All data persists in ./supabase/data and ./supabase/storage
+#
+# REQUIRED: Create .env with your GROQ_API_KEY, QDRANT_URL, QDRANT_API_KEY
+# ═══════════════════════════════════════════════════════════════
+
 services:
+  # ═══════════════════════════════════════════════════════════════
+  # LOCAL SUPABASE STACK (6 services)
+  # ═══════════════════════════════════════════════════════════════
+
+  # PostgreSQL Database — Local only, data in ./supabase/data
+  db:
+    image: supabase/postgres:17.4.1.040
+    container_name: fairpay_db
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+    ports:
+      - "54322:5432"
+    volumes:
+      - ./supabase/data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fairpay-network
+
+  # Supabase API (PostgREST) — Auto REST on local Postgres
+  rest:
+    image: postgrest/postgrest:v12.2.3
+    container_name: fairpay_rest
+    environment:
+      PGRST_DB_URI: postgres://postgres:postgres@db:5432/postgres
+      PGRST_DB_SCHEMA: public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
+    ports:
+      - "54321:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - fairpay-network
+
+  # Supabase Auth (GoTrue) — Local JWT auth
+  auth:
+    image: supabase/gotrue:v2.173.0
+    container_name: fairpay_auth
+    environment:
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://postgres:postgres@db:5432/postgres
+      GOTRUE_SITE_URL: http://localhost:3000
+      GOTRUE_URI_ALLOW_LIST: "*"
+      GOTRUE_JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
+      GOTRUE_JWT_EXP: 3600
+      GOTRUE_EXTERNAL_URL: http://localhost:54321
+      GOTRUE_DISABLE_SIGNUP: "false"
+    ports:
+      - "54322:9999"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - fairpay-network
+
+  # Supabase Studio — Local web UI at http://localhost:54323
+  studio:
+    image: supabase/studio:20250708-3a8b9b7
+    container_name: fairpay_studio
+    environment:
+      STUDIO_DEFAULT_ORGANIZATION: supabase
+      STUDIO_DEFAULT_PROJECT: compliance-auditor
+      SUPABASE_URL: http://rest:3000
+      SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNvbXBsaWFuY2UtYXVkaXRvciIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzM0NTY3MjAwLCJleHAiOjIwNTAxNDMyMDB9.AdL3r5N5LQ8xK8xK8xK8xK8xK8xK8xK8xK8xK8xK8x
+    ports:
+      - "54323:3000"
+    depends_on:
+      - rest
+    networks:
+      - fairpay-network
+
+  # Supabase Realtime — Local WebSocket subscriptions
+  realtime:
+    image: supabase/realtime:v2.32.10
+    container_name: fairpay_realtime
+    environment:
+      PORT: 4000
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: postgres
+      DB_AFTER_CONNECT_QUERY: "SET search_path TO _realtime"
+      SECRET_KEY_BASE: super-secret-key-base-for-realtime-service
+      ERL_AFLAGS: "-proto_dist inet_tcp"
+    ports:
+      - "54324:4000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - fairpay-network
+
+  # Supabase Storage — Local file storage in ./supabase/storage
+  storage:
+    image: supabase/storage-api:v1.18.0
+    container_name: fairpay_storage
+    environment:
+      ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNvbXBsaWFuY2UtYXVkaXRvciIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzM0NTY3MjAwLCJleHAiOjIwNTAxNDMyMDB9.AdL3r5N5LQ8xK8xK8xK8xK8xK8xK8xK8xK8xK8xK8x
+      SERVICE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNvbXBsaWFuY2UtYXVkaXRvciIsInJvbGUiOiJzZXJ2aWNlX3JvbGUiLCJpYXQiOjE3MzQ1NjcyMDAsImV4cCI6MjA1MDE0MzIwMH0.AdL3r5N5LQ8xK8xK8xK8xK8xK8xK8xK8xK8xK8xK8x
+      POSTGREST_URL: http://rest:3000
+      PGRST_JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
+      DATABASE_URL: postgres://postgres:postgres@db:5432/postgres
+      FILE_SIZE_LIMIT: 52428800
+      STORAGE_BACKEND: file
+      FILE_STORAGE_PATH: /var/lib/storage
+      TENANT_ID: compliance-auditor
+      REGION: local
+      GLOBAL_S3_BUCKET: ""
+    ports:
+      - "54325:5000"
+    volumes:
+      - ./supabase/storage:/var/lib/storage
+    depends_on:
+      db:
+        condition: service_healthy
+      rest:
+        condition: service_started
+    networks:
+      - fairpay-network
+
+  # ═══════════════════════════════════════════════════════════════
+  # FAIRPAY APPLICATION SERVICES
+  # ═══════════════════════════════════════════════════════════════
+
   # Backend API Service
   backend:
     build:
@@ -13,8 +158,8 @@ services:
       - GROQ_API_KEY=${GROQ_API_KEY}
       - QDRANT_URL=${QDRANT_URL}
       - QDRANT_API_KEY=${QDRANT_API_KEY}
-      - SUPABASE_URL=${SUPABASE_URL}
-      - SUPABASE_KEY=${SUPABASE_KEY}
+      - SUPABASE_URL=http://rest:3000
+      - SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNvbXBsaWFuY2UtYXVkaXRvciIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzM0NTY3MjAwLCJleHAiOjIwNTAxNDMyMDB9.AdL3r5N5LQ8xK8xK8xK8xK8xK8xK8xK8xK8xK8xK8x
       - TESSERACT_PATH=/usr/bin/tesseract
     volumes:
       - ./Backend/real_laws.json:/app/real_laws.json:ro
@@ -25,8 +170,13 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    depends_on:
+      rest:
+        condition: service_healthy
+    networks:
+      - fairpay-network
 
-  # Frontend Development Server (optional, for local development)
+  # Frontend Development Server (hot reload)
   frontend-dev:
     build:
       context: ./frontend/frontend
@@ -44,8 +194,10 @@ services:
       - backend
     profiles:
       - dev
+    networks:
+      - fairpay-network
 
-  # Frontend Production Build (for testing production build locally)
+  # Frontend Production Build (nginx)
   frontend-prod:
     build:
       context: ./frontend/frontend
@@ -54,13 +206,15 @@ services:
     ports:
       - "3000:80"
     environment:
-      - VITE_API_BASE_URL=http://localhost:8000
+      - VITE_API_BASE_URL=http://backend:8000
       - VITE_DEMO_MODE=false
     depends_on:
       - backend
     profiles:
       - prod
+    networks:
+      - fairpay-network
 
 networks:
-  default:
+  fairpay-network:
     name: fairpay-network

@@ -40,3 +40,6 @@ temp_*.jpeg
 
 # Test files
 server.log
+
+# Backend experimental files
+Backend/Experimental_files/
