@@ -9,25 +9,24 @@ interface PlatformEarnings {
   earnings: number;
   color: string;
   icon: string;
+  incrementInterval: number; // ms - matches backend run_delivery_streams()
 }
 
 const PLATFORMS: PlatformEarnings[] = [
-  { platform: 'Zomato', earnings: 4000, color: '#E23744', icon: '🛵' },
-  { platform: 'Swiggy', earnings: 3500, color: '#FC8019', icon: '📦' },
-  { platform: 'Uber Eats', earnings: 1700, color: '#000000', icon: '🚗' },
+  { platform: 'Zomato', earnings: 4000, color: '#E23744', icon: '🛵', incrementInterval: 5000 },
+  { platform: 'Swiggy', earnings: 3500, color: '#FC8019', icon: '📦', incrementInterval: 13000 },
+  { platform: 'Uber Eats', earnings: 1700, color: '#000000', icon: '🚗', incrementInterval: 18000 },
 ];
 
 // Determine if we're in demo mode (Vercel deployment)
 const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true' || typeof window !== 'undefined' && window.location.hostname !== 'localhost';
 
 function App() {
-  // Live Earnings State
-  const [platformData, setPlatformData] = useState<Record<string, number>>({
-    Zomato: 4000,
-    Swiggy: 3500,
-    'Uber Eats': 1700,
-  });
-  const [isConnected, setIsConnected] = useState(false);
+  // Live Earnings State - initialize with demo data if in demo mode to avoid sync setState in effect
+  const [platformData, setPlatformData] = useState<Record<string, number>>(
+    isDemoMode ? SAMPLE_PLATFORM_EARNINGS : { Zomato: 4000, Swiggy: 3500, 'Uber Eats': 1700 }
+  );
+  const [isConnected, setIsConnected] = useState(isDemoMode); // true in demo mode
   const wsRef = useRef<WebSocket | null>(null);
 
   // Evidence Upload State
@@ -64,10 +63,20 @@ function App() {
   // Initialize WebSocket connection (only in non-demo mode)
   useEffect(() => {
     if (demoMode) {
-      // Use sample data in demo mode
-      setPlatformData(SAMPLE_PLATFORM_EARNINGS);
-      setIsConnected(true);
-      return;
+      // Platform data already initialized with SAMPLE_PLATFORM_EARNINGS in useState
+      // isConnected already initialized to true for demo mode
+
+      // Simulate live earnings increment matching backend run_delivery_streams() intervals
+      const intervals = PLATFORMS.map(p =>
+        setInterval(() => {
+          setPlatformData(prev => ({
+            ...prev,
+            [p.platform]: (prev[p.platform] || p.earnings) + 100
+          }));
+        }, p.incrementInterval)
+      );
+
+      return () => intervals.forEach(clearInterval);
     }
 
     const websocket = createEarningsStream(handleStreamMessage);
@@ -140,6 +149,13 @@ function App() {
   const handleDemoAudit = (index: number) => {
     setDemoAuditResult(SAMPLE_AUDIT_RESULTS[index]);
     setUploadResult(null);
+    // Scroll to audit results section
+    setTimeout(() => {
+      const resultsSection = document.getElementById('audit-results');
+      if (resultsSection) {
+        resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 100);
   };
 
   const clearResults = () => {
@@ -235,8 +251,8 @@ function App() {
               <div className="why-fairpay-text">
                 <span className="section-badge">THE PROBLEM</span>
                 <h2 className="section-title-large">
-                  Don't you think it is tedious for our delivery partners to track their earnings from several platforms such as
-                  <span className="platform-list">Zomato, Swiggy, Uber Eats</span> and many more?
+                  Don't you think it is <span className="emphasis">difficult</span> for our delivery partners to track their earnings from several platforms such as
+                  Zomato, Swiggy, Uber Eats and many more?
                 </h2>
                 <p className="why-fairpay-description">
                   Every day, delivery partners like Bobby juggle multiple apps, each with different payout structures,
@@ -397,7 +413,7 @@ function App() {
                 {demoMode && (
                   <div className="demo-samples">
                     <h4>Try Sample Audits</h4>
-                    <p className="demo-samples-hint">Click to preview audit results without uploading files</p>
+                    <p className="demo-samples-hint">Click a delivery partner to see their audit results</p>
                     <div className="demo-sample-buttons">
                       {SAMPLE_AUDIT_RESULTS.map((sample, index) => (
                         <button
@@ -406,7 +422,7 @@ function App() {
                           onClick={() => handleDemoAudit(index)}
                           style={{ borderColor: getStatusColor(sample.status) } as React.CSSProperties}
                         >
-                          <span className="demo-sample-platform">{sample.platform}</span>
+                          <span className="demo-sample-partner">{sample.partnerName}</span>
                           <span className="demo-sample-status" style={{ color: getStatusColor(sample.status) }}>
                             {sample.status}
                           </span>
@@ -439,7 +455,7 @@ function App() {
                 <div className="privacy-card">
                   <div className="privacy-icon">🚫</div>
                   <h3>No Data Storage</h3>
-                  <p>Your uploaded documents are processed in memory and never persisted to disk. Temporary files are deleted immediately after audit completion.</p>
+                  <p>Your uploaded documents are processed in memory and never saved to disk. When it comes to personal data, what happens in engine stays in engine, and vanishes</p>
                 </div>
                 <div className="privacy-card">
                   <div className="privacy-icon">🔐</div>
@@ -536,7 +552,7 @@ function App() {
                             onClick={() => handleDemoAudit(index)}
                             style={{ borderColor: getStatusColor(sample.status) } as React.CSSProperties}
                           >
-                            <span className="demo-sample-platform">{sample.platform}</span>
+                            <span className="demo-sample-partner">{sample.partnerName}</span>
                             <span className="demo-sample-status" style={{ color: getStatusColor(sample.status) }}>
                               {sample.status}
                             </span>

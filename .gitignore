@@ -1,3 +1,42 @@
+# Environment
 .env
 .venv
-__pycache__
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+build/
+*.log
+npm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+.docker/
+
+# Temporary files
+temp_*.pdf
+temp_*.png
+temp_*.jpg
+temp_*.jpeg
+
+# Test files
+server.log

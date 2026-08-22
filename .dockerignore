@@ -1,3 +1,11 @@
 .env
 .venv
 __pycache__
+*.log
+*.pdf
+*.png
+Experimental_files/
+temp_*
+node_modules/
+dist/
+.git/

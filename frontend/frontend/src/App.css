@@ -36,7 +36,7 @@
   --leading-subheading: 1.5;
   --text-heading-lg: 38px;
   --leading-heading-lg: 0.9;
-  --text-display-sm: 80px;
+  --text-display-sm: 57px;
   --leading-display-sm: 1;
   --text-display: 96px;
   --leading-display: 0.9;
@@ -278,6 +278,11 @@ body {
   color: var(--color-cyan-signal);
 }
 
+.emphasis {
+  color: var(--color-cyan-signal);
+  font-weight: var(--font-weight-medium);
+}
+
 .section-subtitle {
   font-family: var(--font-suisse-intl);
   font-size: var(--text-body);
@@ -489,6 +494,28 @@ body {
   max-width: 480px;
 }
 
+/* Responsive sizing for the problem question to fit in one frame */
+@media (max-width: 1024px) {
+  .why-fairpay-text .section-title-large {
+    font-size: 30px;
+    line-height: 1.1;
+  }
+}
+
+@media (max-width: 768px) {
+  .why-fairpay-text .section-title-large {
+    font-size: 28px;
+    line-height: 1.15;
+  }
+}
+
+@media (max-width: 480px) {
+  .why-fairpay-text .section-title-large {
+    font-size: 24px;
+    line-height: 1.2;
+  }
+}
+
 .why-fairpay-solution {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -548,7 +575,7 @@ body {
 .upload-content {
   display: grid;
   grid-template-columns: 1.2fr 1fr;
-  gap: var(--spacing-80);
+  gap: var(--spacing-100);
   align-items: start;
 }
 
@@ -1258,7 +1285,7 @@ body {
   transform: translateX(0);
 }
 
-.demo-sample-platform {
+.demo-sample-partner {
   font-family: var(--font-suisse-intl);
   font-size: var(--text-body);
   font-weight: var(--font-weight-medium);

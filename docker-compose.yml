@@ -4,7 +4,7 @@ services:
   # Backend API Service
   backend:
     build:
-      context: .
+      context: ./Backend
       dockerfile: Dockerfile
     container_name: fairpay-backend
     ports:
@@ -17,7 +17,7 @@ services:
       - SUPABASE_KEY=${SUPABASE_KEY}
       - TESSERACT_PATH=/usr/bin/tesseract
     volumes:
-      - ./real_laws.json:/app/real_laws.json:ro
+      - ./Backend/real_laws.json:/app/real_laws.json:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]

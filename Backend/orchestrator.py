@@ -205,7 +205,7 @@ def ai_extraction_node(state: AuditState):
                 "actual_payout (float). Respond ONLY with valid JSON." \
 
     response = client.chat.completions.create(
-        model = "llama-3.3-70b-versatile",
+        model = "groq/compound-mini",
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": worker_data}
