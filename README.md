@@ -74,16 +74,3 @@ docker-compose up --build
 **No Supabase account needed** — runs entirely in local containers.
 
 See **[HOW_TO_RUN.md](HOW_TO_RUN.md)** for detailed steps, troubleshooting, and architecture notes.
-
----
-
-## Demo Deployment (Vercel)
-
-Frontend-only demo with simulated data — no backend required:
-
-1. Push to GitHub
-2. Vercel → New Project → Root: `frontend/frontend`
-3. Env: `VITE_DEMO_MODE=true`
-4. Deploy
-
-Live demo URL: fully functional UI with sample audits, simulated earnings, animated audit progress.

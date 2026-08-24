@@ -1,6 +1,7 @@
 # Environment
 .env
 .venv
+GEMINI.md
 
 # Python
 __pycache__/
