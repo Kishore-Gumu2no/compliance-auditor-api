@@ -1,0 +1,50 @@
+[
+  {
+    "settlement_id": "SETL00001",
+    "partner_id": "PTR0014",
+    "platform": "Swiggy",
+    "order_id": "ORD00001",
+    "date": "2026-07-25",
+    "amount_paid": 176.03
+  },
+  {
+    "settlement_id": "SETL00005",
+    "partner_id": "PTR0006",
+    "platform": "Zomato",
+    "order_id": "ORD00005",
+    "date": "2026-08-03",
+    "amount_paid": 132.27
+  },
+  {
+    "settlement_id": "SETL00020",
+    "partner_id": "PTR0003",
+    "platform": "Swiggy",
+    "order_id": "ORD00022",
+    "date": "2026-08-07",
+    "amount_paid": 267.54
+  },
+  {
+    "settlement_id": "SETL00027",
+    "partner_id": "PTR0015",
+    "platform": "Swiggy",
+    "order_id": "ORD00029",
+    "date": "2026-07-28",
+    "amount_paid": 194.86
+  },
+  {
+    "settlement_id": "SETL00028",
+    "partner_id": "PTR0003",
+    "platform": "Swiggy",
+    "order_id": "ORD00030",
+    "date": "2026-08-06",
+    "amount_paid": 230.94
+  },
+  {
+    "settlement_id": "SETL00029",
+    "partner_id": "PTR0003",
+    "platform": "Swiggy",
+    "order_id": "ORD00030",
+    "date": "2026-08-06",
+    "amount_paid": 230.94
+  }
+]

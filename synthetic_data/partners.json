@@ -1,0 +1,229 @@
+[
+  {
+    "partner_id": "PTR0001",
+    "name": "Partner 01",
+    "city": "Bengaluru",
+    "platforms_enrolled": [
+      "UberEats"
+    ],
+    "contract_type": "standard",
+    "join_date": "2024-08-16"
+  },
+  {
+    "partner_id": "PTR0002",
+    "name": "Partner 02",
+    "city": "Mysuru",
+    "platforms_enrolled": [
+      "Zomato"
+    ],
+    "contract_type": "premium_incentive",
+    "join_date": "2024-02-02"
+  },
+  {
+    "partner_id": "PTR0003",
+    "name": "Partner 03",
+    "city": "Bengaluru",
+    "platforms_enrolled": [
+      "Swiggy"
+    ],
+    "contract_type": "standard",
+    "join_date": "2025-06-01"
+  },
+  {
+    "partner_id": "PTR0004",
+    "name": "Partner 04",
+    "city": "Belagavi",
+    "platforms_enrolled": [
+      "Swiggy"
+    ],
+    "contract_type": "premium_incentive",
+    "join_date": "2024-08-13"
+  },
+  {
+    "partner_id": "PTR0005",
+    "name": "Partner 05",
+    "city": "Hubballi",
+    "platforms_enrolled": [
+      "Zomato",
+      "Instamart",
+      "Swiggy"
+    ],
+    "contract_type": "premium_incentive",
+    "join_date": "2024-10-11"
+  },
+  {
+    "partner_id": "PTR0006",
+    "name": "Partner 06",
+    "city": "Mysuru",
+    "platforms_enrolled": [
+      "UberEats",
+      "Zomato"
+    ],
+    "contract_type": "standard",
+    "join_date": "2025-01-24"
+  },
+  {
+    "partner_id": "PTR0007",
+    "name": "Partner 07",
+    "city": "Bengaluru",
+    "platforms_enrolled": [
+      "UberEats",
+      "Instamart",
+      "Swiggy"
+    ],
+    "contract_type": "standard",
+    "join_date": "2025-04-15"
+  },
+  {
+    "partner_id": "PTR0008",
+    "name": "Partner 08",
+    "city": "Belagavi",
+    "platforms_enrolled": [
+      "Instamart"
+    ],
+    "contract_type": "standard",
+    "join_date": "2025-07-19"
+  },
+  {
+    "partner_id": "PTR0009",
+    "name": "Partner 09",
+    "city": "Mangaluru",
+    "platforms_enrolled": [
+      "Swiggy",
+      "UberEats",
+      "Zomato"
+    ],
+    "contract_type": "standard",
+    "join_date": "2025-11-08"
+  },
+  {
+    "partner_id": "PTR0010",
+    "name": "Partner 10",
+    "city": "Mysuru",
+    "platforms_enrolled": [
+      "Zomato",
+      "Instamart",
+      "UberEats"
+    ],
+    "contract_type": "premium_incentive",
+    "join_date": "2024-10-11"
+  },
+  {
+    "partner_id": "PTR0011",
+    "name": "Partner 11",
+    "city": "Hubballi",
+    "platforms_enrolled": [
+      "Swiggy",
+      "Instamart",
+      "UberEats"
+    ],
+    "contract_type": "standard",
+    "join_date": "2025-11-17"
+  },
+  {
+    "partner_id": "PTR0012",
+    "name": "Partner 12",
+    "city": "Mangaluru",
+    "platforms_enrolled": [
+      "Swiggy"
+    ],
+    "contract_type": "standard",
+    "join_date": "2024-06-16"
+  },
+  {
+    "partner_id": "PTR0013",
+    "name": "Partner 13",
+    "city": "Hubballi",
+    "platforms_enrolled": [
+      "UberEats",
+      "Instamart",
+      "Zomato",
+      "Swiggy"
+    ],
+    "contract_type": "standard",
+    "join_date": "2024-08-22"
+  },
+  {
+    "partner_id": "PTR0014",
+    "name": "Partner 14",
+    "city": "Bengaluru",
+    "platforms_enrolled": [
+      "Instamart",
+      "Swiggy",
+      "Zomato"
+    ],
+    "contract_type": "standard",
+    "join_date": "2025-08-03"
+  },
+  {
+    "partner_id": "PTR0015",
+    "name": "Partner 15",
+    "city": "Mangaluru",
+    "platforms_enrolled": [
+      "Instamart",
+      "Swiggy"
+    ],
+    "contract_type": "premium_incentive",
+    "join_date": "2024-05-26"
+  },
+  {
+    "partner_id": "PTR0016",
+    "name": "Partner 16",
+    "city": "Mangaluru",
+    "platforms_enrolled": [
+      "Swiggy",
+      "UberEats"
+    ],
+    "contract_type": "premium_incentive",
+    "join_date": "2025-08-21"
+  },
+  {
+    "partner_id": "PTR0017",
+    "name": "Partner 17",
+    "city": "Hubballi",
+    "platforms_enrolled": [
+      "UberEats",
+      "Zomato",
+      "Instamart",
+      "Swiggy"
+    ],
+    "contract_type": "standard",
+    "join_date": "2024-02-18"
+  },
+  {
+    "partner_id": "PTR0018",
+    "name": "Partner 18",
+    "city": "Bengaluru",
+    "platforms_enrolled": [
+      "Swiggy",
+      "UberEats"
+    ],
+    "contract_type": "premium_incentive",
+    "join_date": "2025-09-02"
+  },
+  {
+    "partner_id": "PTR0019",
+    "name": "Partner 19",
+    "city": "Bengaluru",
+    "platforms_enrolled": [
+      "Instamart",
+      "UberEats",
+      "Swiggy",
+      "Zomato"
+    ],
+    "contract_type": "standard",
+    "join_date": "2025-11-27"
+  },
+  {
+    "partner_id": "PTR0020",
+    "name": "Partner 20",
+    "city": "Bengaluru",
+    "platforms_enrolled": [
+      "UberEats",
+      "Zomato",
+      "Swiggy"
+    ],
+    "contract_type": "premium_incentive",
+    "join_date": "2024-06-10"
+  }
+]

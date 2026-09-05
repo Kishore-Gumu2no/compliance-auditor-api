@@ -1,0 +1,850 @@
+[
+  {
+    "settlement_id": "SETL00001",
+    "partner_id": "PTR0014",
+    "platform": "Swiggy",
+    "order_id": "ORD00001",
+    "date": "2026-07-25",
+    "amount_paid": 176.03
+  },
+  {
+    "settlement_id": "SETL00002",
+    "partner_id": "PTR0013",
+    "platform": "Zomato",
+    "order_id": "ORD00002",
+    "date": "2026-06-15",
+    "amount_paid": 158.16
+  },
+  {
+    "settlement_id": "SETL00003",
+    "partner_id": "PTR0013",
+    "platform": "Zomato",
+    "order_id": "ORD00003",
+    "date": "2026-06-15",
+    "amount_paid": 74.98
+  },
+  {
+    "settlement_id": "SETL00004",
+    "partner_id": "PTR0003",
+    "platform": "Swiggy",
+    "order_id": "ORD00004",
+    "date": "2026-08-10",
+    "amount_paid": 94.77
+  },
+  {
+    "settlement_id": "SETL00005",
+    "partner_id": "PTR0006",
+    "platform": "Zomato",
+    "order_id": "ORD00005",
+    "date": "2026-08-03",
+    "amount_paid": 132.27
+  },
+  {
+    "settlement_id": "SETL00006",
+    "partner_id": "PTR0010",
+    "platform": "Instamart",
+    "order_id": "ORD00006",
+    "date": "2026-08-29",
+    "amount_paid": 242.74
+  },
+  {
+    "settlement_id": "SETL00007",
+    "partner_id": "PTR0007",
+    "platform": "Instamart",
+    "order_id": "ORD00007",
+    "date": "2026-06-30",
+    "amount_paid": 276.38
+  },
+  {
+    "settlement_id": "SETL00008",
+    "partner_id": "PTR0017",
+    "platform": "Zomato",
+    "order_id": "ORD00008",
+    "date": "2026-06-08",
+    "amount_paid": 258.2
+  },
+  {
+    "settlement_id": "SETL00009",
+    "partner_id": "PTR0013",
+    "platform": "UberEats",
+    "order_id": "ORD00009",
+    "date": "2026-08-14",
+    "amount_paid": 171.41
+  },
+  {
+    "settlement_id": "SETL00010",
+    "partner_id": "PTR0011",
+    "platform": "Instamart",
+    "order_id": "ORD00010",
+    "date": "2026-06-27",
+    "amount_paid": 240.92
+  },
+  {
+    "settlement_id": "SETL00011",
+    "partner_id": "PTR0001",
+    "platform": "UberEats",
+    "order_id": "ORD00011",
+    "date": "2026-08-20",
+    "amount_paid": 258.27
+  },
+  {
+    "settlement_id": "SETL00012",
+    "partner_id": "PTR0003",
+    "platform": "Swiggy",
+    "order_id": "ORD00012",
+    "date": "2026-07-20",
+    "amount_paid": 171.91
+  },
+  {
+    "settlement_id": "SETL00013",
+    "partner_id": "PTR0017",
+    "platform": "UberEats",
+    "order_id": "ORD00013",
+    "date": "2026-08-25",
+    "amount_paid": 269.67
+  },
+  {
+    "settlement_id": "SETL00014",
+    "partner_id": "PTR0018",
+    "platform": "Swiggy",
+    "order_id": "ORD00014",
+    "date": "2026-07-07",
+    "amount_paid": 155.33
+  },
+  {
+    "settlement_id": "SETL00015",
+    "partner_id": "PTR0009",
+    "platform": "Swiggy",
+    "order_id": "ORD00016",
+    "date": "2026-07-29",
+    "amount_paid": 209.88
+  },
+  {
+    "settlement_id": "SETL00016",
+    "partner_id": "PTR0002",
+    "platform": "Zomato",
+    "order_id": "ORD00017",
+    "date": "2026-08-14",
+    "amount_paid": 177.28
+  },
+  {
+    "settlement_id": "SETL00017",
+    "partner_id": "PTR0012",
+    "platform": "Swiggy",
+    "order_id": "ORD00018",
+    "date": "2026-08-27",
+    "amount_paid": 143.8
+  },
+  {
+    "settlement_id": "SETL00018",
+    "partner_id": "PTR0008",
+    "platform": "Instamart",
+    "order_id": "ORD00019",
+    "date": "2026-06-25",
+    "amount_paid": 288.77
+  },
+  {
+    "settlement_id": "SETL00019",
+    "partner_id": "PTR0015",
+    "platform": "Swiggy",
+    "order_id": "ORD00021",
+    "date": "2026-07-11",
+    "amount_paid": 245.89
+  },
+  {
+    "settlement_id": "SETL00020",
+    "partner_id": "PTR0003",
+    "platform": "Swiggy",
+    "order_id": "ORD00022",
+    "date": "2026-08-07",
+    "amount_paid": 267.54
+  },
+  {
+    "settlement_id": "SETL00021",
+    "partner_id": "PTR0009",
+    "platform": "Swiggy",
+    "order_id": "ORD00023",
+    "date": "2026-08-15",
+    "amount_paid": 252.3
+  },
+  {
+    "settlement_id": "SETL00022",
+    "partner_id": "PTR0014",
+    "platform": "Zomato",
+    "order_id": "ORD00024",
+    "date": "2026-08-07",
+    "amount_paid": 101.44
+  },
+  {
+    "settlement_id": "SETL00023",
+    "partner_id": "PTR0018",
+    "platform": "Swiggy",
+    "order_id": "ORD00025",
+    "date": "2026-07-19",
+    "amount_paid": 153.32
+  },
+  {
+    "settlement_id": "SETL00024",
+    "partner_id": "PTR0004",
+    "platform": "Swiggy",
+    "order_id": "ORD00026",
+    "date": "2026-08-05",
+    "amount_paid": 169.86
+  },
+  {
+    "settlement_id": "SETL00025",
+    "partner_id": "PTR0006",
+    "platform": "Zomato",
+    "order_id": "ORD00027",
+    "date": "2026-07-23",
+    "amount_paid": 196.1
+  },
+  {
+    "settlement_id": "SETL00026",
+    "partner_id": "PTR0006",
+    "platform": "Zomato",
+    "order_id": "ORD00028",
+    "date": "2026-07-23",
+    "amount_paid": 115.47
+  },
+  {
+    "settlement_id": "SETL00027",
+    "partner_id": "PTR0015",
+    "platform": "Swiggy",
+    "order_id": "ORD00029",
+    "date": "2026-07-28",
+    "amount_paid": 194.86
+  },
+  {
+    "settlement_id": "SETL00028",
+    "partner_id": "PTR0003",
+    "platform": "Swiggy",
+    "order_id": "ORD00030",
+    "date": "2026-08-06",
+    "amount_paid": 230.94
+  },
+  {
+    "settlement_id": "SETL00029",
+    "partner_id": "PTR0003",
+    "platform": "Swiggy",
+    "order_id": "ORD00030",
+    "date": "2026-08-06",
+    "amount_paid": 230.94
+  },
+  {
+    "settlement_id": "SETL00030",
+    "partner_id": "PTR0010",
+    "platform": "Zomato",
+    "order_id": "ORD00031",
+    "date": "2026-06-27",
+    "amount_paid": 183.76
+  },
+  {
+    "settlement_id": "SETL00031",
+    "partner_id": "PTR0010",
+    "platform": "Zomato",
+    "order_id": "ORD00032",
+    "date": "2026-06-27",
+    "amount_paid": 95.54
+  },
+  {
+    "settlement_id": "SETL00032",
+    "partner_id": "PTR0019",
+    "platform": "UberEats",
+    "order_id": "ORD00033",
+    "date": "2026-08-31",
+    "amount_paid": 202.88
+  },
+  {
+    "settlement_id": "SETL00033",
+    "partner_id": "PTR0014",
+    "platform": "Instamart",
+    "order_id": "ORD00034",
+    "date": "2026-06-23",
+    "amount_paid": 216.7
+  },
+  {
+    "settlement_id": "SETL00034",
+    "partner_id": "PTR0015",
+    "platform": "Swiggy",
+    "order_id": "ORD00036",
+    "date": "2026-08-12",
+    "amount_paid": 224.73
+  },
+  {
+    "settlement_id": "SETL00035",
+    "partner_id": "PTR0009",
+    "platform": "Zomato",
+    "order_id": "ORD00037",
+    "date": "2026-08-04",
+    "amount_paid": 203.62
+  },
+  {
+    "settlement_id": "SETL00036",
+    "partner_id": "PTR0003",
+    "platform": "Swiggy",
+    "order_id": "ORD00038",
+    "date": "2026-06-22",
+    "amount_paid": 111.16
+  },
+  {
+    "settlement_id": "SETL00037",
+    "partner_id": "PTR0015",
+    "platform": "Swiggy",
+    "order_id": "ORD00039",
+    "date": "2026-06-09",
+    "amount_paid": 187.55
+  },
+  {
+    "settlement_id": "SETL00038",
+    "partner_id": "PTR0015",
+    "platform": "Swiggy",
+    "order_id": "ORD00039",
+    "date": "2026-06-09",
+    "amount_paid": 187.55
+  },
+  {
+    "settlement_id": "SETL00039",
+    "partner_id": "PTR0019",
+    "platform": "Zomato",
+    "order_id": "ORD00040",
+    "date": "2026-08-02",
+    "amount_paid": 141.28
+  },
+  {
+    "settlement_id": "SETL00040",
+    "partner_id": "PTR0018",
+    "platform": "Swiggy",
+    "order_id": "ORD00041",
+    "date": "2026-08-02",
+    "amount_paid": 89.48
+  },
+  {
+    "settlement_id": "SETL00041",
+    "partner_id": "PTR0015",
+    "platform": "Instamart",
+    "order_id": "ORD00042",
+    "date": "2026-08-19",
+    "amount_paid": 170.8
+  },
+  {
+    "settlement_id": "SETL00042",
+    "partner_id": "PTR0013",
+    "platform": "Zomato",
+    "order_id": "ORD00044",
+    "date": "2026-07-25",
+    "amount_paid": 124.44
+  },
+  {
+    "settlement_id": "SETL00043",
+    "partner_id": "PTR0008",
+    "platform": "Instamart",
+    "order_id": "ORD00045",
+    "date": "2026-08-23",
+    "amount_paid": 106.62
+  },
+  {
+    "settlement_id": "SETL00044",
+    "partner_id": "PTR0005",
+    "platform": "Instamart",
+    "order_id": "ORD00046",
+    "date": "2026-08-26",
+    "amount_paid": 73.38
+  },
+  {
+    "settlement_id": "SETL00045",
+    "partner_id": "PTR0020",
+    "platform": "Swiggy",
+    "order_id": "ORD00047",
+    "date": "2026-09-02",
+    "amount_paid": 76.64
+  },
+  {
+    "settlement_id": "SETL00046",
+    "partner_id": "PTR0013",
+    "platform": "Swiggy",
+    "order_id": "ORD00048",
+    "date": "2026-09-01",
+    "amount_paid": 172.53
+  },
+  {
+    "settlement_id": "SETL00047",
+    "partner_id": "PTR0004",
+    "platform": "Swiggy",
+    "order_id": "ORD00049",
+    "date": "2026-07-16",
+    "amount_paid": 188.07
+  },
+  {
+    "settlement_id": "SETL00048",
+    "partner_id": "PTR0004",
+    "platform": "Swiggy",
+    "order_id": "ORD00050",
+    "date": "2026-07-16",
+    "amount_paid": 99.02
+  },
+  {
+    "settlement_id": "SETL00049",
+    "partner_id": "PTR0014",
+    "platform": "Swiggy",
+    "order_id": "ORD00051",
+    "date": "2026-08-23",
+    "amount_paid": 264.68
+  },
+  {
+    "settlement_id": "SETL00050",
+    "partner_id": "PTR0018",
+    "platform": "UberEats",
+    "order_id": "ORD00052",
+    "date": "2026-07-30",
+    "amount_paid": 188.12
+  },
+  {
+    "settlement_id": "SETL00051",
+    "partner_id": "PTR0009",
+    "platform": "UberEats",
+    "order_id": "ORD00053",
+    "date": "2026-07-03",
+    "amount_paid": 261.04
+  },
+  {
+    "settlement_id": "SETL00052",
+    "partner_id": "PTR0006",
+    "platform": "Zomato",
+    "order_id": "ORD00054",
+    "date": "2026-06-29",
+    "amount_paid": 162.69
+  },
+  {
+    "settlement_id": "SETL00053",
+    "partner_id": "PTR0006",
+    "platform": "Zomato",
+    "order_id": "ORD00054",
+    "date": "2026-06-29",
+    "amount_paid": 162.69
+  },
+  {
+    "settlement_id": "SETL00054",
+    "partner_id": "PTR0018",
+    "platform": "Swiggy",
+    "order_id": "ORD00055",
+    "date": "2026-08-08",
+    "amount_paid": 298.78
+  },
+  {
+    "settlement_id": "SETL00055",
+    "partner_id": "PTR0016",
+    "platform": "UberEats",
+    "order_id": "ORD00056",
+    "date": "2026-07-30",
+    "amount_paid": 232.53
+  },
+  {
+    "settlement_id": "SETL00056",
+    "partner_id": "PTR0012",
+    "platform": "Swiggy",
+    "order_id": "ORD00057",
+    "date": "2026-08-11",
+    "amount_paid": 170.26
+  },
+  {
+    "settlement_id": "SETL00057",
+    "partner_id": "PTR0009",
+    "platform": "UberEats",
+    "order_id": "ORD00058",
+    "date": "2026-07-05",
+    "amount_paid": 119.19
+  },
+  {
+    "settlement_id": "SETL00058",
+    "partner_id": "PTR0006",
+    "platform": "UberEats",
+    "order_id": "ORD00059",
+    "date": "2026-06-29",
+    "amount_paid": 208.31
+  },
+  {
+    "settlement_id": "SETL00059",
+    "partner_id": "PTR0005",
+    "platform": "Swiggy",
+    "order_id": "ORD00061",
+    "date": "2026-08-03",
+    "amount_paid": 97.44
+  },
+  {
+    "settlement_id": "SETL00060",
+    "partner_id": "PTR0002",
+    "platform": "Zomato",
+    "order_id": "ORD00062",
+    "date": "2026-08-03",
+    "amount_paid": 121.14
+  },
+  {
+    "settlement_id": "SETL00061",
+    "partner_id": "PTR0010",
+    "platform": "Zomato",
+    "order_id": "ORD00063",
+    "date": "2026-07-03",
+    "amount_paid": 78.37
+  },
+  {
+    "settlement_id": "SETL00062",
+    "partner_id": "PTR0017",
+    "platform": "Swiggy",
+    "order_id": "ORD00064",
+    "date": "2026-07-28",
+    "amount_paid": 281.53
+  },
+  {
+    "settlement_id": "SETL00063",
+    "partner_id": "PTR0003",
+    "platform": "Swiggy",
+    "order_id": "ORD00066",
+    "date": "2026-06-02",
+    "amount_paid": 120.21
+  },
+  {
+    "settlement_id": "SETL00064",
+    "partner_id": "PTR0015",
+    "platform": "Instamart",
+    "order_id": "ORD00067",
+    "date": "2026-08-27",
+    "amount_paid": 182.98
+  },
+  {
+    "settlement_id": "SETL00065",
+    "partner_id": "PTR0014",
+    "platform": "Instamart",
+    "order_id": "ORD00068",
+    "date": "2026-08-10",
+    "amount_paid": 109.01
+  },
+  {
+    "settlement_id": "SETL00066",
+    "partner_id": "PTR0019",
+    "platform": "Swiggy",
+    "order_id": "ORD00069",
+    "date": "2026-07-29",
+    "amount_paid": 101.14
+  },
+  {
+    "settlement_id": "SETL00067",
+    "partner_id": "PTR0018",
+    "platform": "UberEats",
+    "order_id": "ORD00070",
+    "date": "2026-07-27",
+    "amount_paid": 128.24
+  },
+  {
+    "settlement_id": "SETL00068",
+    "partner_id": "PTR0008",
+    "platform": "Instamart",
+    "order_id": "ORD00071",
+    "date": "2026-08-27",
+    "amount_paid": 301.45
+  },
+  {
+    "settlement_id": "SETL00069",
+    "partner_id": "PTR0008",
+    "platform": "Instamart",
+    "order_id": "ORD00071",
+    "date": "2026-08-27",
+    "amount_paid": 301.45
+  },
+  {
+    "settlement_id": "SETL00070",
+    "partner_id": "PTR0009",
+    "platform": "Swiggy",
+    "order_id": "ORD00072",
+    "date": "2026-08-15",
+    "amount_paid": 123.68
+  },
+  {
+    "settlement_id": "SETL00071",
+    "partner_id": "PTR0004",
+    "platform": "Swiggy",
+    "order_id": "ORD00073",
+    "date": "2026-07-13",
+    "amount_paid": 202.99
+  },
+  {
+    "settlement_id": "SETL00072",
+    "partner_id": "PTR0015",
+    "platform": "Instamart",
+    "order_id": "ORD00074",
+    "date": "2026-07-13",
+    "amount_paid": 174.65
+  },
+  {
+    "settlement_id": "SETL00073",
+    "partner_id": "PTR0015",
+    "platform": "Swiggy",
+    "order_id": "ORD00075",
+    "date": "2026-06-07",
+    "amount_paid": 172.41
+  },
+  {
+    "settlement_id": "SETL00074",
+    "partner_id": "PTR0009",
+    "platform": "Zomato",
+    "order_id": "ORD00076",
+    "date": "2026-06-17",
+    "amount_paid": 332.49
+  },
+  {
+    "settlement_id": "SETL00075",
+    "partner_id": "PTR0006",
+    "platform": "Zomato",
+    "order_id": "ORD00077",
+    "date": "2026-08-12",
+    "amount_paid": 81.36
+  },
+  {
+    "settlement_id": "SETL00076",
+    "partner_id": "PTR0005",
+    "platform": "Instamart",
+    "order_id": "ORD00078",
+    "date": "2026-09-01",
+    "amount_paid": 129.62
+  },
+  {
+    "settlement_id": "SETL00077",
+    "partner_id": "PTR0008",
+    "platform": "Instamart",
+    "order_id": "ORD00079",
+    "date": "2026-08-11",
+    "amount_paid": 151.14
+  },
+  {
+    "settlement_id": "SETL00078",
+    "partner_id": "PTR0011",
+    "platform": "UberEats",
+    "order_id": "ORD00080",
+    "date": "2026-07-06",
+    "amount_paid": 243.37
+  },
+  {
+    "settlement_id": "SETL00079",
+    "partner_id": "PTR0007",
+    "platform": "Swiggy",
+    "order_id": "ORD00082",
+    "date": "2026-07-02",
+    "amount_paid": 269.04
+  },
+  {
+    "settlement_id": "SETL00080",
+    "partner_id": "PTR0013",
+    "platform": "Instamart",
+    "order_id": "ORD00083",
+    "date": "2026-08-04",
+    "amount_paid": 304.35
+  },
+  {
+    "settlement_id": "SETL00081",
+    "partner_id": "PTR0013",
+    "platform": "Instamart",
+    "order_id": "ORD00083",
+    "date": "2026-08-04",
+    "amount_paid": 304.35
+  },
+  {
+    "settlement_id": "SETL00082",
+    "partner_id": "PTR0004",
+    "platform": "Swiggy",
+    "order_id": "ORD00084",
+    "date": "2026-07-02",
+    "amount_paid": 273.98
+  },
+  {
+    "settlement_id": "SETL00083",
+    "partner_id": "PTR0020",
+    "platform": "Swiggy",
+    "order_id": "ORD00085",
+    "date": "2026-07-22",
+    "amount_paid": 161.47
+  },
+  {
+    "settlement_id": "SETL00084",
+    "partner_id": "PTR0016",
+    "platform": "Swiggy",
+    "order_id": "ORD00086",
+    "date": "2026-08-20",
+    "amount_paid": 54.88
+  },
+  {
+    "settlement_id": "SETL00085",
+    "partner_id": "PTR0004",
+    "platform": "Swiggy",
+    "order_id": "ORD00087",
+    "date": "2026-07-28",
+    "amount_paid": 103.43
+  },
+  {
+    "settlement_id": "SETL00086",
+    "partner_id": "PTR0005",
+    "platform": "Zomato",
+    "order_id": "ORD00088",
+    "date": "2026-08-08",
+    "amount_paid": 157.05
+  },
+  {
+    "settlement_id": "SETL00087",
+    "partner_id": "PTR0020",
+    "platform": "Swiggy",
+    "order_id": "ORD00089",
+    "date": "2026-07-03",
+    "amount_paid": 183.18
+  },
+  {
+    "settlement_id": "SETL00088",
+    "partner_id": "PTR0001",
+    "platform": "UberEats",
+    "order_id": "ORD00090",
+    "date": "2026-07-09",
+    "amount_paid": 230.53
+  },
+  {
+    "settlement_id": "SETL00089",
+    "partner_id": "PTR0014",
+    "platform": "Zomato",
+    "order_id": "ORD00091",
+    "date": "2026-07-04",
+    "amount_paid": 229.98
+  },
+  {
+    "settlement_id": "SETL00090",
+    "partner_id": "PTR0014",
+    "platform": "Zomato",
+    "order_id": "ORD00091",
+    "date": "2026-07-04",
+    "amount_paid": 229.98
+  },
+  {
+    "settlement_id": "SETL00091",
+    "partner_id": "PTR0012",
+    "platform": "Swiggy",
+    "order_id": "ORD00092",
+    "date": "2026-08-30",
+    "amount_paid": 130.17
+  },
+  {
+    "settlement_id": "SETL00092",
+    "partner_id": "PTR0012",
+    "platform": "Swiggy",
+    "order_id": "ORD00093",
+    "date": "2026-08-31",
+    "amount_paid": 130.19
+  },
+  {
+    "settlement_id": "SETL00093",
+    "partner_id": "PTR0008",
+    "platform": "Instamart",
+    "order_id": "ORD00094",
+    "date": "2026-06-30",
+    "amount_paid": 188.23
+  },
+  {
+    "settlement_id": "SETL00094",
+    "partner_id": "PTR0008",
+    "platform": "Instamart",
+    "order_id": "ORD00095",
+    "date": "2026-06-30",
+    "amount_paid": 115.92
+  },
+  {
+    "settlement_id": "SETL00095",
+    "partner_id": "PTR0005",
+    "platform": "Swiggy",
+    "order_id": "ORD00096",
+    "date": "2026-06-15",
+    "amount_paid": 233.58
+  },
+  {
+    "settlement_id": "SETL00096",
+    "partner_id": "PTR0012",
+    "platform": "Swiggy",
+    "order_id": "ORD00097",
+    "date": "2026-06-13",
+    "amount_paid": 299.34
+  },
+  {
+    "settlement_id": "SETL00097",
+    "partner_id": "PTR0012",
+    "platform": "Swiggy",
+    "order_id": "ORD00098",
+    "date": "2026-06-13",
+    "amount_paid": 86.59
+  },
+  {
+    "settlement_id": "SETL00098",
+    "partner_id": "PTR0017",
+    "platform": "Instamart",
+    "order_id": "ORD00099",
+    "date": "2026-06-24",
+    "amount_paid": 123.68
+  },
+  {
+    "settlement_id": "SETL00099",
+    "partner_id": "PTR0011",
+    "platform": "Swiggy",
+    "order_id": "ORD00100",
+    "date": "2026-07-31",
+    "amount_paid": 243.69
+  },
+  {
+    "settlement_id": "SETL00100",
+    "partner_id": "PTR0013",
+    "platform": "Zomato",
+    "order_id": "ORD00101",
+    "date": "2026-06-14",
+    "amount_paid": 257.35
+  },
+  {
+    "settlement_id": "SETL00101",
+    "partner_id": "PTR0009",
+    "platform": "Zomato",
+    "order_id": "ORD00102",
+    "date": "2026-07-21",
+    "amount_paid": 173.41
+  },
+  {
+    "settlement_id": "SETL00102",
+    "partner_id": "PTR0008",
+    "platform": "Instamart",
+    "order_id": "ORD00103",
+    "date": "2026-08-21",
+    "amount_paid": 220.06
+  },
+  {
+    "settlement_id": "SETL00103",
+    "partner_id": "PTR0002",
+    "platform": "Zomato",
+    "order_id": "ORD00104",
+    "date": "2026-07-10",
+    "amount_paid": 268.61
+  },
+  {
+    "settlement_id": "SETL00104",
+    "partner_id": "PTR0002",
+    "platform": "Zomato",
+    "order_id": "ORD00105",
+    "date": "2026-07-10",
+    "amount_paid": 268.09
+  },
+  {
+    "settlement_id": "SETL00105",
+    "partner_id": "PTR0014",
+    "platform": "Zomato",
+    "order_id": "ORD00106",
+    "date": "2026-06-14",
+    "amount_paid": 201.73
+  },
+  {
+    "settlement_id": "SETL00106",
+    "partner_id": "PTR0012",
+    "platform": "Swiggy",
+    "order_id": "ORD00107",
+    "date": "2026-07-29",
+    "amount_paid": 184.61
+  }
+]

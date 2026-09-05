@@ -1,7 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import './App.css';
 import { createEarningsStream, uploadEvidence, type StreamMessage, type AuditResponse } from './services/api';
+import { CounterfactualSimulator } from './components/CounterfactualSimulator';
+import { IncentiveModelCard } from './components/IncentiveModelCard';
+import { GradedFindingsDisplay } from './components/GradedFindingsDisplay';
+import { SyntheticDataUpload } from './components/SyntheticDataUpload';
 import { SAMPLE_AUDIT_RESULTS, SAMPLE_PLATFORM_EARNINGS, formatCurrency, getStatusColor, type SampleAuditResult } from './services/demoData';
+
+// Partner ID for Bobby - this should come from auth in production
+const PARTNER_ID = 'bobby_delivery_partner';
 
 // Platform types for live earnings
 interface PlatformEarnings {
@@ -79,7 +86,7 @@ function App() {
       return () => intervals.forEach(clearInterval);
     }
 
-    const websocket = createEarningsStream(handleStreamMessage);
+    const websocket = createEarningsStream(handleStreamMessage, PARTNER_ID);
     wsRef.current = websocket;
 
     return () => {
@@ -136,7 +143,19 @@ function App() {
     try {
       const result = await uploadEvidence({
         images: selectedImages.length > 0 ? selectedImages : undefined,
-        pdfs: selectedPdfs.length > 0 ? selectedPdfs : undefined,
+      pdfs: selectedPdfs.length > 0 ? selectedPdfs : undefined,
+      partner_profile: JSON.stringify({
+      partner_id: "PTR_DEMO",
+      name: "Demo Partner",
+      phone: "9999999999",
+      vehicle_type: "bike",
+      petrol_per_km: 8.5,
+      zone: "Bengaluru",
+      platform_accounts: ["Zomato"],
+      active_since: "2024-01-01"
+      }),
+      platform: "zomato",
+      contract_versions: JSON.stringify([])
       });
       setUploadResult(result);
     } catch (error) {
@@ -439,6 +458,9 @@ function App() {
           </div>
         </section>
 
+        {/* Synthetic Data Upload */}
+        <SyntheticDataUpload />
+
         {/* Section 4: Privacy / Trust */}
         <section id="privacy" className="section privacy-section">
           <div className="container">
@@ -534,6 +556,50 @@ function App() {
                       {demoMode ? 'Try Another Sample' : 'Run New Audit'}
                     </button>
                   </div>
+
+                  {/* Incentive Model Cards - only show for real upload results */}
+                  {uploadResult?.ai_analysis && uploadResult.ai_analysis.contract_compliance_findings?.length > 0 && (
+                    <div className="result-section" style={{ marginTop: 'var(--spacing-32)' }}>
+                      <h3 className="section-subtitle" style={{ fontSize: 'var(--text-xl)', fontWeight: '600', marginBottom: 'var(--spacing-16)' }}>
+                        Platform Incentive Models
+                      </h3>
+                      <div className="incentive-cards-grid">
+                        {['Zomato', 'Swiggy', 'Uber Eats'].map(p => (
+                          <IncentiveModelCard
+                            key={p}
+                            platform={p}
+                            incentive={p === 'Zomato' ? 15 : p === 'Swiggy' ? 12 : 10}
+                            adherenceRate={p === 'Zomato' ? 0.85 : p === 'Swiggy' ? 0.78 : 0.72}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Graded Findings Display - show for real upload results */}
+                  {uploadResult?.ai_analysis && (
+                    <div className="result-section" style={{ marginTop: 'var(--spacing-32)' }}>
+                      <GradedFindingsDisplay
+                        findings={[
+                          ...(uploadResult.ai_analysis.contract_compliance_findings || []).map(f => ({
+                            grade: f.grade,
+                            title: `Contract: ${f.contract_clause}`,
+                            description: f.notes
+                          })),
+                          ...(uploadResult.ai_analysis.legal_risk_findings || []).map(f => ({
+                            grade: f.grade,
+                            title: `Legal: ${f.legal_basis.statute}`,
+                            description: f.notes
+                          })),
+                          ...(uploadResult.ai_analysis.economic_concern_findings || []).map(f => ({
+                            grade: f.grade,
+                            title: `Economic: ${f.severity} severity`,
+                            description: f.notes
+                          }))
+                        ]}
+                      />
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="audit-empty-state">
@@ -569,6 +635,10 @@ function App() {
             </div>
           </div>
         </section>
+
+        {/* Section 6: Counterfactual Simulator */}
+        <CounterfactualSimulator />
+
       </main>
 
       <footer className="footer">

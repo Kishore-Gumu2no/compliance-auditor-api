@@ -1,0 +1,1434 @@
+[
+  {
+    "earning_id": "EARN00001",
+    "partner_id": "PTR0014",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 176.03,
+    "matched_settlement_ids": [
+      "SETL00001"
+    ],
+    "actual_amount": 176.03,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00002",
+    "partner_id": "PTR0013",
+    "anomaly_type": "extra_unexplained_settlement",
+    "expected_amount": 158.16,
+    "matched_settlement_ids": [
+      "SETL00002"
+    ],
+    "actual_amount": 158.16,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Earning matches normally; separately, an unexplained orphan settlement exists for this partner with no corresponding earning.",
+    "orphan_settlement_id": "SETL00003"
+  },
+  {
+    "earning_id": "EARN00003",
+    "partner_id": "PTR0003",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 94.77,
+    "matched_settlement_ids": [
+      "SETL00004"
+    ],
+    "actual_amount": 94.77,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00004",
+    "partner_id": "PTR0006",
+    "anomaly_type": "partial_payment",
+    "expected_amount": 161.79,
+    "matched_settlement_ids": [
+      "SETL00005"
+    ],
+    "actual_amount": 132.27,
+    "difference": 29.52,
+    "expected_status": "partial_payment",
+    "human_review_required": true,
+    "explanation": "Settlement amount is less than expected amount (partial payment)."
+  },
+  {
+    "earning_id": "EARN00005",
+    "partner_id": "PTR0010",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 242.74,
+    "matched_settlement_ids": [
+      "SETL00006"
+    ],
+    "actual_amount": 242.74,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00006",
+    "partner_id": "PTR0007",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 276.38,
+    "matched_settlement_ids": [
+      "SETL00007"
+    ],
+    "actual_amount": 276.38,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00007",
+    "partner_id": "PTR0017",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 258.2,
+    "matched_settlement_ids": [
+      "SETL00008"
+    ],
+    "actual_amount": 258.2,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00008",
+    "partner_id": "PTR0013",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 171.41,
+    "matched_settlement_ids": [
+      "SETL00009"
+    ],
+    "actual_amount": 171.41,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00009",
+    "partner_id": "PTR0011",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 240.92,
+    "matched_settlement_ids": [
+      "SETL00010"
+    ],
+    "actual_amount": 240.92,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00010",
+    "partner_id": "PTR0001",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 258.27,
+    "matched_settlement_ids": [
+      "SETL00011"
+    ],
+    "actual_amount": 258.27,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00011",
+    "partner_id": "PTR0003",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 171.91,
+    "matched_settlement_ids": [
+      "SETL00012"
+    ],
+    "actual_amount": 171.91,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00012",
+    "partner_id": "PTR0017",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 269.67,
+    "matched_settlement_ids": [
+      "SETL00013"
+    ],
+    "actual_amount": 269.67,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00013",
+    "partner_id": "PTR0018",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 155.33,
+    "matched_settlement_ids": [
+      "SETL00014"
+    ],
+    "actual_amount": 155.33,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00014",
+    "partner_id": "PTR0016",
+    "anomaly_type": "missing_payment",
+    "expected_amount": 148.66,
+    "matched_settlement_ids": [],
+    "actual_amount": 0.0,
+    "difference": 148.66,
+    "expected_status": "missing_payment",
+    "human_review_required": true,
+    "explanation": "No settlement record exists for this earning."
+  },
+  {
+    "earning_id": "EARN00015",
+    "partner_id": "PTR0009",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 209.88,
+    "matched_settlement_ids": [
+      "SETL00015"
+    ],
+    "actual_amount": 209.88,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00016",
+    "partner_id": "PTR0002",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 177.28,
+    "matched_settlement_ids": [
+      "SETL00016"
+    ],
+    "actual_amount": 177.28,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00017",
+    "partner_id": "PTR0012",
+    "anomaly_type": "partial_payment",
+    "expected_amount": 184.83,
+    "matched_settlement_ids": [
+      "SETL00017"
+    ],
+    "actual_amount": 143.8,
+    "difference": 41.03,
+    "expected_status": "partial_payment",
+    "human_review_required": true,
+    "explanation": "Settlement amount is less than expected amount (partial payment)."
+  },
+  {
+    "earning_id": "EARN00018",
+    "partner_id": "PTR0008",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 288.77,
+    "matched_settlement_ids": [
+      "SETL00018"
+    ],
+    "actual_amount": 288.77,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00019",
+    "partner_id": "PTR0008",
+    "anomaly_type": "missing_payment",
+    "expected_amount": 283.62,
+    "matched_settlement_ids": [],
+    "actual_amount": 0.0,
+    "difference": 283.62,
+    "expected_status": "missing_payment",
+    "human_review_required": true,
+    "explanation": "No settlement record exists for this earning."
+  },
+  {
+    "earning_id": "EARN00020",
+    "partner_id": "PTR0015",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 245.89,
+    "matched_settlement_ids": [
+      "SETL00019"
+    ],
+    "actual_amount": 245.89,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00021",
+    "partner_id": "PTR0003",
+    "anomaly_type": "date_out_of_tolerance",
+    "expected_amount": 267.54,
+    "matched_settlement_ids": [
+      "SETL00020"
+    ],
+    "actual_amount": 267.54,
+    "difference": 0.0,
+    "expected_status": "date_out_of_tolerance",
+    "human_review_required": true,
+    "explanation": "Settlement amount matches but falls far outside the normal settlement date window."
+  },
+  {
+    "earning_id": "EARN00022",
+    "partner_id": "PTR0009",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 252.3,
+    "matched_settlement_ids": [
+      "SETL00021"
+    ],
+    "actual_amount": 252.3,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00023",
+    "partner_id": "PTR0014",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 101.44,
+    "matched_settlement_ids": [
+      "SETL00022"
+    ],
+    "actual_amount": 101.44,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00024",
+    "partner_id": "PTR0018",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 153.32,
+    "matched_settlement_ids": [
+      "SETL00023"
+    ],
+    "actual_amount": 153.32,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00025",
+    "partner_id": "PTR0004",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 169.86,
+    "matched_settlement_ids": [
+      "SETL00024"
+    ],
+    "actual_amount": 169.86,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00026",
+    "partner_id": "PTR0006",
+    "anomaly_type": "extra_unexplained_settlement",
+    "expected_amount": 196.1,
+    "matched_settlement_ids": [
+      "SETL00025"
+    ],
+    "actual_amount": 196.1,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Earning matches normally; separately, an unexplained orphan settlement exists for this partner with no corresponding earning.",
+    "orphan_settlement_id": "SETL00026"
+  },
+  {
+    "earning_id": "EARN00027",
+    "partner_id": "PTR0015",
+    "anomaly_type": "missing_incentive",
+    "expected_amount": 258.36,
+    "matched_settlement_ids": [
+      "SETL00027"
+    ],
+    "actual_amount": 194.86,
+    "difference": 63.5,
+    "expected_status": "missing_incentive",
+    "human_review_required": true,
+    "explanation": "Settlement excludes the incentive component present in the earnings record."
+  },
+  {
+    "earning_id": "EARN00028",
+    "partner_id": "PTR0003",
+    "anomaly_type": "duplicate_settlement",
+    "expected_amount": 230.94,
+    "matched_settlement_ids": [
+      "SETL00028",
+      "SETL00029"
+    ],
+    "actual_amount": 461.88,
+    "difference": 230.94,
+    "expected_status": "duplicate_settlement",
+    "human_review_required": true,
+    "explanation": "Two identical settlements exist for the same order_id."
+  },
+  {
+    "earning_id": "EARN00029",
+    "partner_id": "PTR0010",
+    "anomaly_type": "extra_unexplained_settlement",
+    "expected_amount": 183.76,
+    "matched_settlement_ids": [
+      "SETL00030"
+    ],
+    "actual_amount": 183.76,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Earning matches normally; separately, an unexplained orphan settlement exists for this partner with no corresponding earning.",
+    "orphan_settlement_id": "SETL00031"
+  },
+  {
+    "earning_id": "EARN00030",
+    "partner_id": "PTR0019",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 202.88,
+    "matched_settlement_ids": [
+      "SETL00032"
+    ],
+    "actual_amount": 202.88,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00031",
+    "partner_id": "PTR0014",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 216.7,
+    "matched_settlement_ids": [
+      "SETL00033"
+    ],
+    "actual_amount": 216.7,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00032",
+    "partner_id": "PTR0015",
+    "anomaly_type": "missing_payment",
+    "expected_amount": 193.49,
+    "matched_settlement_ids": [],
+    "actual_amount": 0.0,
+    "difference": 193.49,
+    "expected_status": "missing_payment",
+    "human_review_required": true,
+    "explanation": "No settlement record exists for this earning."
+  },
+  {
+    "earning_id": "EARN00033",
+    "partner_id": "PTR0015",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 224.73,
+    "matched_settlement_ids": [
+      "SETL00034"
+    ],
+    "actual_amount": 224.73,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00034",
+    "partner_id": "PTR0009",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 203.62,
+    "matched_settlement_ids": [
+      "SETL00035"
+    ],
+    "actual_amount": 203.62,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00035",
+    "partner_id": "PTR0003",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 111.16,
+    "matched_settlement_ids": [
+      "SETL00036"
+    ],
+    "actual_amount": 111.16,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00036",
+    "partner_id": "PTR0015",
+    "anomaly_type": "duplicate_settlement",
+    "expected_amount": 187.55,
+    "matched_settlement_ids": [
+      "SETL00037",
+      "SETL00038"
+    ],
+    "actual_amount": 375.1,
+    "difference": 187.55,
+    "expected_status": "duplicate_settlement",
+    "human_review_required": true,
+    "explanation": "Two identical settlements exist for the same order_id."
+  },
+  {
+    "earning_id": "EARN00037",
+    "partner_id": "PTR0019",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 141.28,
+    "matched_settlement_ids": [
+      "SETL00039"
+    ],
+    "actual_amount": 141.28,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00038",
+    "partner_id": "PTR0018",
+    "anomaly_type": "partial_payment",
+    "expected_amount": 119.62,
+    "matched_settlement_ids": [
+      "SETL00040"
+    ],
+    "actual_amount": 89.48,
+    "difference": 30.14,
+    "expected_status": "partial_payment",
+    "human_review_required": true,
+    "explanation": "Settlement amount is less than expected amount (partial payment)."
+  },
+  {
+    "earning_id": "EARN00039",
+    "partner_id": "PTR0015",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 170.8,
+    "matched_settlement_ids": [
+      "SETL00041"
+    ],
+    "actual_amount": 170.8,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00040",
+    "partner_id": "PTR0014",
+    "anomaly_type": "missing_payment",
+    "expected_amount": 137.08,
+    "matched_settlement_ids": [],
+    "actual_amount": 0.0,
+    "difference": 137.08,
+    "expected_status": "missing_payment",
+    "human_review_required": true,
+    "explanation": "No settlement record exists for this earning."
+  },
+  {
+    "earning_id": "EARN00041",
+    "partner_id": "PTR0013",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 124.44,
+    "matched_settlement_ids": [
+      "SETL00042"
+    ],
+    "actual_amount": 124.44,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00042",
+    "partner_id": "PTR0008",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 106.62,
+    "matched_settlement_ids": [
+      "SETL00043"
+    ],
+    "actual_amount": 106.62,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00043",
+    "partner_id": "PTR0005",
+    "anomaly_type": "incorrect_deduction",
+    "expected_amount": 99.45,
+    "matched_settlement_ids": [
+      "SETL00044"
+    ],
+    "actual_amount": 73.38,
+    "difference": 26.07,
+    "expected_status": "incorrect_deduction",
+    "human_review_required": true,
+    "explanation": "Settlement reflects a deduction not justified by the earnings breakdown."
+  },
+  {
+    "earning_id": "EARN00044",
+    "partner_id": "PTR0020",
+    "anomaly_type": "partial_payment",
+    "expected_amount": 98.96,
+    "matched_settlement_ids": [
+      "SETL00045"
+    ],
+    "actual_amount": 76.64,
+    "difference": 22.32,
+    "expected_status": "partial_payment",
+    "human_review_required": true,
+    "explanation": "Settlement amount is less than expected amount (partial payment)."
+  },
+  {
+    "earning_id": "EARN00045",
+    "partner_id": "PTR0013",
+    "anomaly_type": "incorrect_deduction",
+    "expected_amount": 208.06,
+    "matched_settlement_ids": [
+      "SETL00046"
+    ],
+    "actual_amount": 172.53,
+    "difference": 35.53,
+    "expected_status": "incorrect_deduction",
+    "human_review_required": true,
+    "explanation": "Settlement reflects a deduction not justified by the earnings breakdown."
+  },
+  {
+    "earning_id": "EARN00046",
+    "partner_id": "PTR0004",
+    "anomaly_type": "extra_unexplained_settlement",
+    "expected_amount": 188.07,
+    "matched_settlement_ids": [
+      "SETL00047"
+    ],
+    "actual_amount": 188.07,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Earning matches normally; separately, an unexplained orphan settlement exists for this partner with no corresponding earning.",
+    "orphan_settlement_id": "SETL00048"
+  },
+  {
+    "earning_id": "EARN00047",
+    "partner_id": "PTR0014",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 264.68,
+    "matched_settlement_ids": [
+      "SETL00049"
+    ],
+    "actual_amount": 264.68,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00048",
+    "partner_id": "PTR0018",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 188.12,
+    "matched_settlement_ids": [
+      "SETL00050"
+    ],
+    "actual_amount": 188.12,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00049",
+    "partner_id": "PTR0009",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 261.04,
+    "matched_settlement_ids": [
+      "SETL00051"
+    ],
+    "actual_amount": 261.04,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00050",
+    "partner_id": "PTR0006",
+    "anomaly_type": "duplicate_settlement",
+    "expected_amount": 162.69,
+    "matched_settlement_ids": [
+      "SETL00052",
+      "SETL00053"
+    ],
+    "actual_amount": 325.38,
+    "difference": 162.69,
+    "expected_status": "duplicate_settlement",
+    "human_review_required": true,
+    "explanation": "Two identical settlements exist for the same order_id."
+  },
+  {
+    "earning_id": "EARN00051",
+    "partner_id": "PTR0018",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 298.78,
+    "matched_settlement_ids": [
+      "SETL00054"
+    ],
+    "actual_amount": 298.78,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00052",
+    "partner_id": "PTR0016",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 232.53,
+    "matched_settlement_ids": [
+      "SETL00055"
+    ],
+    "actual_amount": 232.53,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00053",
+    "partner_id": "PTR0012",
+    "anomaly_type": "missing_incentive",
+    "expected_amount": 229.93,
+    "matched_settlement_ids": [
+      "SETL00056"
+    ],
+    "actual_amount": 170.26,
+    "difference": 59.67,
+    "expected_status": "missing_incentive",
+    "human_review_required": true,
+    "explanation": "Settlement excludes the incentive component present in the earnings record."
+  },
+  {
+    "earning_id": "EARN00054",
+    "partner_id": "PTR0009",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 119.19,
+    "matched_settlement_ids": [
+      "SETL00057"
+    ],
+    "actual_amount": 119.19,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00055",
+    "partner_id": "PTR0006",
+    "anomaly_type": "incorrect_deduction",
+    "expected_amount": 252.73,
+    "matched_settlement_ids": [
+      "SETL00058"
+    ],
+    "actual_amount": 208.31,
+    "difference": 44.42,
+    "expected_status": "incorrect_deduction",
+    "human_review_required": true,
+    "explanation": "Settlement reflects a deduction not justified by the earnings breakdown."
+  },
+  {
+    "earning_id": "EARN00056",
+    "partner_id": "PTR0007",
+    "anomaly_type": "missing_payment",
+    "expected_amount": 193.97,
+    "matched_settlement_ids": [],
+    "actual_amount": 0.0,
+    "difference": 193.97,
+    "expected_status": "missing_payment",
+    "human_review_required": true,
+    "explanation": "No settlement record exists for this earning."
+  },
+  {
+    "earning_id": "EARN00057",
+    "partner_id": "PTR0005",
+    "anomaly_type": "missing_incentive",
+    "expected_amount": 120.19,
+    "matched_settlement_ids": [
+      "SETL00059"
+    ],
+    "actual_amount": 97.44,
+    "difference": 22.75,
+    "expected_status": "missing_incentive",
+    "human_review_required": true,
+    "explanation": "Settlement excludes the incentive component present in the earnings record."
+  },
+  {
+    "earning_id": "EARN00058",
+    "partner_id": "PTR0002",
+    "anomaly_type": "partial_payment",
+    "expected_amount": 138.73,
+    "matched_settlement_ids": [
+      "SETL00060"
+    ],
+    "actual_amount": 121.14,
+    "difference": 17.59,
+    "expected_status": "partial_payment",
+    "human_review_required": true,
+    "explanation": "Settlement amount is less than expected amount (partial payment)."
+  },
+  {
+    "earning_id": "EARN00059",
+    "partner_id": "PTR0010",
+    "anomaly_type": "incorrect_deduction",
+    "expected_amount": 100.14,
+    "matched_settlement_ids": [
+      "SETL00061"
+    ],
+    "actual_amount": 78.37,
+    "difference": 21.77,
+    "expected_status": "incorrect_deduction",
+    "human_review_required": true,
+    "explanation": "Settlement reflects a deduction not justified by the earnings breakdown."
+  },
+  {
+    "earning_id": "EARN00060",
+    "partner_id": "PTR0017",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 281.53,
+    "matched_settlement_ids": [
+      "SETL00062"
+    ],
+    "actual_amount": 281.53,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00061",
+    "partner_id": "PTR0020",
+    "anomaly_type": "missing_payment",
+    "expected_amount": 254.49,
+    "matched_settlement_ids": [],
+    "actual_amount": 0.0,
+    "difference": 254.49,
+    "expected_status": "missing_payment",
+    "human_review_required": true,
+    "explanation": "No settlement record exists for this earning."
+  },
+  {
+    "earning_id": "EARN00062",
+    "partner_id": "PTR0003",
+    "anomaly_type": "incorrect_deduction",
+    "expected_amount": 143.69,
+    "matched_settlement_ids": [
+      "SETL00063"
+    ],
+    "actual_amount": 120.21,
+    "difference": 23.48,
+    "expected_status": "incorrect_deduction",
+    "human_review_required": true,
+    "explanation": "Settlement reflects a deduction not justified by the earnings breakdown."
+  },
+  {
+    "earning_id": "EARN00063",
+    "partner_id": "PTR0015",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 182.98,
+    "matched_settlement_ids": [
+      "SETL00064"
+    ],
+    "actual_amount": 182.98,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00064",
+    "partner_id": "PTR0014",
+    "anomaly_type": "incorrect_deduction",
+    "expected_amount": 141.86,
+    "matched_settlement_ids": [
+      "SETL00065"
+    ],
+    "actual_amount": 109.01,
+    "difference": 32.85,
+    "expected_status": "incorrect_deduction",
+    "human_review_required": true,
+    "explanation": "Settlement reflects a deduction not justified by the earnings breakdown."
+  },
+  {
+    "earning_id": "EARN00065",
+    "partner_id": "PTR0019",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 101.14,
+    "matched_settlement_ids": [
+      "SETL00066"
+    ],
+    "actual_amount": 101.14,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00066",
+    "partner_id": "PTR0018",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 128.24,
+    "matched_settlement_ids": [
+      "SETL00067"
+    ],
+    "actual_amount": 128.24,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00067",
+    "partner_id": "PTR0008",
+    "anomaly_type": "duplicate_settlement",
+    "expected_amount": 301.45,
+    "matched_settlement_ids": [
+      "SETL00068",
+      "SETL00069"
+    ],
+    "actual_amount": 602.9,
+    "difference": 301.45,
+    "expected_status": "duplicate_settlement",
+    "human_review_required": true,
+    "explanation": "Two identical settlements exist for the same order_id."
+  },
+  {
+    "earning_id": "EARN00068",
+    "partner_id": "PTR0009",
+    "anomaly_type": "partial_payment",
+    "expected_amount": 154.1,
+    "matched_settlement_ids": [
+      "SETL00070"
+    ],
+    "actual_amount": 123.68,
+    "difference": 30.42,
+    "expected_status": "partial_payment",
+    "human_review_required": true,
+    "explanation": "Settlement amount is less than expected amount (partial payment)."
+  },
+  {
+    "earning_id": "EARN00069",
+    "partner_id": "PTR0004",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 202.99,
+    "matched_settlement_ids": [
+      "SETL00071"
+    ],
+    "actual_amount": 202.99,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00070",
+    "partner_id": "PTR0015",
+    "anomaly_type": "partial_payment",
+    "expected_amount": 184.71,
+    "matched_settlement_ids": [
+      "SETL00072"
+    ],
+    "actual_amount": 174.65,
+    "difference": 10.06,
+    "expected_status": "partial_payment",
+    "human_review_required": true,
+    "explanation": "Settlement amount is less than expected amount (partial payment)."
+  },
+  {
+    "earning_id": "EARN00071",
+    "partner_id": "PTR0015",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 172.41,
+    "matched_settlement_ids": [
+      "SETL00073"
+    ],
+    "actual_amount": 172.41,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00072",
+    "partner_id": "PTR0009",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 332.49,
+    "matched_settlement_ids": [
+      "SETL00074"
+    ],
+    "actual_amount": 332.49,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00073",
+    "partner_id": "PTR0006",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 81.36,
+    "matched_settlement_ids": [
+      "SETL00075"
+    ],
+    "actual_amount": 81.36,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00074",
+    "partner_id": "PTR0005",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 129.62,
+    "matched_settlement_ids": [
+      "SETL00076"
+    ],
+    "actual_amount": 129.62,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00075",
+    "partner_id": "PTR0008",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 151.14,
+    "matched_settlement_ids": [
+      "SETL00077"
+    ],
+    "actual_amount": 151.14,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00076",
+    "partner_id": "PTR0011",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 243.37,
+    "matched_settlement_ids": [
+      "SETL00078"
+    ],
+    "actual_amount": 243.37,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00077",
+    "partner_id": "PTR0005",
+    "anomaly_type": "missing_payment",
+    "expected_amount": 223.37,
+    "matched_settlement_ids": [],
+    "actual_amount": 0.0,
+    "difference": 223.37,
+    "expected_status": "missing_payment",
+    "human_review_required": true,
+    "explanation": "No settlement record exists for this earning."
+  },
+  {
+    "earning_id": "EARN00078",
+    "partner_id": "PTR0007",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 269.04,
+    "matched_settlement_ids": [
+      "SETL00079"
+    ],
+    "actual_amount": 269.04,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00079",
+    "partner_id": "PTR0013",
+    "anomaly_type": "duplicate_settlement",
+    "expected_amount": 304.35,
+    "matched_settlement_ids": [
+      "SETL00080",
+      "SETL00081"
+    ],
+    "actual_amount": 608.7,
+    "difference": 304.35,
+    "expected_status": "duplicate_settlement",
+    "human_review_required": true,
+    "explanation": "Two identical settlements exist for the same order_id."
+  },
+  {
+    "earning_id": "EARN00080",
+    "partner_id": "PTR0004",
+    "anomaly_type": "date_out_of_tolerance",
+    "expected_amount": 273.98,
+    "matched_settlement_ids": [
+      "SETL00082"
+    ],
+    "actual_amount": 273.98,
+    "difference": 0.0,
+    "expected_status": "date_out_of_tolerance",
+    "human_review_required": true,
+    "explanation": "Settlement amount matches but falls far outside the normal settlement date window."
+  },
+  {
+    "earning_id": "EARN00081",
+    "partner_id": "PTR0020",
+    "anomaly_type": "partial_payment",
+    "expected_amount": 190.47,
+    "matched_settlement_ids": [
+      "SETL00083"
+    ],
+    "actual_amount": 161.47,
+    "difference": 29.0,
+    "expected_status": "partial_payment",
+    "human_review_required": true,
+    "explanation": "Settlement amount is less than expected amount (partial payment)."
+  },
+  {
+    "earning_id": "EARN00082",
+    "partner_id": "PTR0016",
+    "anomaly_type": "partial_payment",
+    "expected_amount": 91.63,
+    "matched_settlement_ids": [
+      "SETL00084"
+    ],
+    "actual_amount": 54.88,
+    "difference": 36.75,
+    "expected_status": "partial_payment",
+    "human_review_required": true,
+    "explanation": "Settlement amount is less than expected amount (partial payment)."
+  },
+  {
+    "earning_id": "EARN00083",
+    "partner_id": "PTR0004",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 103.43,
+    "matched_settlement_ids": [
+      "SETL00085"
+    ],
+    "actual_amount": 103.43,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00084",
+    "partner_id": "PTR0005",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 157.05,
+    "matched_settlement_ids": [
+      "SETL00086"
+    ],
+    "actual_amount": 157.05,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00085",
+    "partner_id": "PTR0020",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 183.18,
+    "matched_settlement_ids": [
+      "SETL00087"
+    ],
+    "actual_amount": 183.18,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00086",
+    "partner_id": "PTR0001",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 230.53,
+    "matched_settlement_ids": [
+      "SETL00088"
+    ],
+    "actual_amount": 230.53,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00087",
+    "partner_id": "PTR0014",
+    "anomaly_type": "duplicate_settlement",
+    "expected_amount": 229.98,
+    "matched_settlement_ids": [
+      "SETL00089",
+      "SETL00090"
+    ],
+    "actual_amount": 459.96,
+    "difference": 229.98,
+    "expected_status": "duplicate_settlement",
+    "human_review_required": true,
+    "explanation": "Two identical settlements exist for the same order_id."
+  },
+  {
+    "earning_id": "EARN00089",
+    "partner_id": "PTR0012",
+    "anomaly_type": "ambiguous_match",
+    "expected_amount": 164.08,
+    "matched_settlement_ids": [
+      "SETL00091",
+      "SETL00092"
+    ],
+    "actual_amount": null,
+    "difference": null,
+    "expected_status": "ambiguous_match",
+    "human_review_required": true,
+    "explanation": "Two earnings and two settlements exist with cross-matching amounts; order_id and amount signals conflict.",
+    "paired_earning_id": "EARN00088"
+  },
+  {
+    "earning_id": "EARN00088",
+    "partner_id": "PTR0012",
+    "anomaly_type": "ambiguous_match",
+    "expected_amount": 130.19,
+    "matched_settlement_ids": [
+      "SETL00091",
+      "SETL00092"
+    ],
+    "actual_amount": null,
+    "difference": null,
+    "expected_status": "ambiguous_match",
+    "human_review_required": true,
+    "explanation": "Two earnings and two settlements exist with cross-matching amounts; order_id and amount signals conflict.",
+    "paired_earning_id": "EARN00089"
+  },
+  {
+    "earning_id": "EARN00090",
+    "partner_id": "PTR0008",
+    "anomaly_type": "extra_unexplained_settlement",
+    "expected_amount": 188.23,
+    "matched_settlement_ids": [
+      "SETL00093"
+    ],
+    "actual_amount": 188.23,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Earning matches normally; separately, an unexplained orphan settlement exists for this partner with no corresponding earning.",
+    "orphan_settlement_id": "SETL00094"
+  },
+  {
+    "earning_id": "EARN00091",
+    "partner_id": "PTR0005",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 233.58,
+    "matched_settlement_ids": [
+      "SETL00095"
+    ],
+    "actual_amount": 233.58,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00092",
+    "partner_id": "PTR0012",
+    "anomaly_type": "extra_unexplained_settlement",
+    "expected_amount": 299.34,
+    "matched_settlement_ids": [
+      "SETL00096"
+    ],
+    "actual_amount": 299.34,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Earning matches normally; separately, an unexplained orphan settlement exists for this partner with no corresponding earning.",
+    "orphan_settlement_id": "SETL00097"
+  },
+  {
+    "earning_id": "EARN00093",
+    "partner_id": "PTR0017",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 123.68,
+    "matched_settlement_ids": [
+      "SETL00098"
+    ],
+    "actual_amount": 123.68,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00094",
+    "partner_id": "PTR0011",
+    "anomaly_type": "missing_incentive",
+    "expected_amount": 321.01,
+    "matched_settlement_ids": [
+      "SETL00099"
+    ],
+    "actual_amount": 243.69,
+    "difference": 77.32,
+    "expected_status": "missing_incentive",
+    "human_review_required": true,
+    "explanation": "Settlement excludes the incentive component present in the earnings record."
+  },
+  {
+    "earning_id": "EARN00095",
+    "partner_id": "PTR0013",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 257.35,
+    "matched_settlement_ids": [
+      "SETL00100"
+    ],
+    "actual_amount": 257.35,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00096",
+    "partner_id": "PTR0009",
+    "anomaly_type": "partial_payment",
+    "expected_amount": 211.48,
+    "matched_settlement_ids": [
+      "SETL00101"
+    ],
+    "actual_amount": 173.41,
+    "difference": 38.07,
+    "expected_status": "partial_payment",
+    "human_review_required": true,
+    "explanation": "Settlement amount is less than expected amount (partial payment)."
+  },
+  {
+    "earning_id": "EARN00097",
+    "partner_id": "PTR0008",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 220.06,
+    "matched_settlement_ids": [
+      "SETL00102"
+    ],
+    "actual_amount": 220.06,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00099",
+    "partner_id": "PTR0002",
+    "anomaly_type": "ambiguous_match",
+    "expected_amount": 143.07,
+    "matched_settlement_ids": [
+      "SETL00103",
+      "SETL00104"
+    ],
+    "actual_amount": null,
+    "difference": null,
+    "expected_status": "ambiguous_match",
+    "human_review_required": true,
+    "explanation": "Two earnings and two settlements exist with cross-matching amounts; order_id and amount signals conflict.",
+    "paired_earning_id": "EARN00098"
+  },
+  {
+    "earning_id": "EARN00098",
+    "partner_id": "PTR0002",
+    "anomaly_type": "ambiguous_match",
+    "expected_amount": 268.09,
+    "matched_settlement_ids": [
+      "SETL00103",
+      "SETL00104"
+    ],
+    "actual_amount": null,
+    "difference": null,
+    "expected_status": "ambiguous_match",
+    "human_review_required": true,
+    "explanation": "Two earnings and two settlements exist with cross-matching amounts; order_id and amount signals conflict.",
+    "paired_earning_id": "EARN00099"
+  },
+  {
+    "earning_id": "EARN00100",
+    "partner_id": "PTR0014",
+    "anomaly_type": "missing_incentive",
+    "expected_amount": 221.73,
+    "matched_settlement_ids": [
+      "SETL00105"
+    ],
+    "actual_amount": 201.73,
+    "difference": 20.0,
+    "expected_status": "missing_incentive",
+    "human_review_required": true,
+    "explanation": "Settlement excludes the incentive component present in the earnings record."
+  },
+  {
+    "earning_id": "EARN00101",
+    "partner_id": "PTR0012",
+    "anomaly_type": "perfect_match",
+    "expected_amount": 184.61,
+    "matched_settlement_ids": [
+      "SETL00106"
+    ],
+    "actual_amount": 184.61,
+    "difference": 0.0,
+    "expected_status": "resolved_automatically",
+    "human_review_required": false,
+    "explanation": "Settlement amount matches expected amount exactly within normal date lag."
+  },
+  {
+    "earning_id": "EARN00102",
+    "partner_id": "PTR0012",
+    "anomaly_type": "missing_payment",
+    "expected_amount": 126.9,
+    "matched_settlement_ids": [],
+    "actual_amount": 0.0,
+    "difference": 126.9,
+    "expected_status": "missing_payment",
+    "human_review_required": true,
+    "explanation": "No settlement record exists for this earning."
+  }
+]
