@@ -1,0 +1,31 @@
+# Keep secrets and local artefacts out of the backend image.
+# Runtime configuration is supplied by docker-compose (env_file / environment),
+# never baked into the image.
+
+# Secrets / environment files
+.env
+.env.*
+*.env
+!.env.example
+
+# Python caches and virtual environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Local logs, scratch output and temp uploads
+*.log
+server.log
+full_benchmark.txt
+temp_*
+
+# Experimental scripts and fixtures (not used at runtime)
+Experimental_files/
+
+# VCS / editor
+.git/
+.gitignore
+.vscode/
+.idea/

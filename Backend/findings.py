@@ -117,21 +117,6 @@ def analyze_contract_compliance(
     return findings
 
 
-def _extract_contract_clause(tx: TransactionRecord, calc: PaymentCalculation) -> str:
-    """Extract the most relevant contract clause from the payment breakdown."""
-    breakdown = calc.breakdown
-
-    # Check which component had the largest deviation
-    if "contract_incentives" in breakdown and breakdown["contract_incentives"] > 0:
-        return f"Incentive clause for {tx.platform} {tx.contract_version}"
-    elif "contract_distance" in breakdown and breakdown["contract_distance"] > 0:
-        return f"Distance pay clause for {tx.platform} {tx.contract_version}"
-    elif "contract_wait" in breakdown and breakdown["contract_wait"] > 0:
-        return f"Wait time compensation clause for {tx.platform} {tx.contract_version}"
-    else:
-        return f"Base pay clause for {tx.platform} {tx.contract_version}"
-
-
 # ============================================================
 # Legal Risk Analysis (Evidence-Based, Conservative)
 # ============================================================

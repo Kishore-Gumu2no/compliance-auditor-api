@@ -18,29 +18,31 @@ def controller_node(state: FairPayState) -> FairPayState:
     """
     Layer 3: Controller / Decision & Escalation
 
-    Consumes Layer 1 (payment_calculations) and Layer 2 (audit_findings)
+    Consumes Layer 1 (reconciliation_predictions) and Layer 2 (audit_findings)
     to produce per-transaction operational decisions and a batch summary.
     """
-    payment_calcs = state.get("payment_calculations", [])
-    audit_findings = state.get("audit_findings")
-    transactions = state.get("transactions", [])
-    partner_id = state.get("partner_id", "")
+    payment_calcs = state.payment_calculations
+    audit_findings = state.audit_findings
+    transactions = state.transactions
+    partner_id = state.partner_id
+    reconciliation_predictions = state.reconciliation_predictions
 
     if not audit_findings:
         # No findings - mark all transactions as resolved automatically
-        decisions = _create_auto_resolved_decisions(partner_id, transactions, payment_calcs)
+        decisions = _create_auto_resolved_decisions(partner_id, transactions, payment_calcs, reconciliation_predictions)
     else:
         decisions = _make_decisions(
             partner_id=partner_id,
             transactions=transactions,
             payment_calcs=payment_calcs,
-            audit_findings=audit_findings
+            audit_findings=audit_findings,
+            reconciliation_predictions=reconciliation_predictions
         )
 
     batch_summary = _build_batch_summary(decisions)
 
     return {
-        **state,
+        **state.model_dump(),
         "controller_decisions": decisions,
         "batch_summary": batch_summary,
         "status": "complete"
@@ -51,7 +53,8 @@ def _make_decisions(
     partner_id: str,
     transactions: List,
     payment_calcs: List[PaymentCalculation],
-    audit_findings: AuditFindings
+    audit_findings: AuditFindings,
+    reconciliation_predictions: List[Dict[str, Any]] = None
 ) -> List[ControllerDecision]:
     """Make per-transaction decisions based on Layer 1 + Layer 2."""
 
@@ -60,6 +63,7 @@ def _make_decisions(
     legal_findings_by_tx = _group_by_tx(audit_findings.legal_risk_findings)
     economic_findings_by_tx = _group_by_tx(audit_findings.economic_concern_findings)
     calc_by_tx = {pc_index_to_tx_id(i, transactions): pc for i, pc in enumerate(payment_calcs)}
+    predictions_by_tx = {p.get("transaction_id"): p for p in (reconciliation_predictions or [])}
 
     decisions = []
 
@@ -68,7 +72,8 @@ def _make_decisions(
 
         # Get Layer 1 facts
         calc = calc_by_tx.get(tx_id)
-        layer1_facts = _extract_layer1_facts(calc, tx, transactions)
+        prediction = predictions_by_tx.get(tx_id)
+        layer1_facts = _extract_layer1_facts(calc, tx, prediction)
 
         # Get Layer 2 findings for this transaction
         contract_f = contract_findings_by_tx.get(tx_id, [])
@@ -106,53 +111,48 @@ def _group_by_tx(findings: List) -> Dict[str, List]:
     return result
 
 
-def _extract_layer1_facts(calc: Optional[PaymentCalculation], tx, all_transactions: List = None) -> Dict[str, Any]:
+def _extract_layer1_facts(calc: Optional[PaymentCalculation], tx, prediction: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Extract Layer 1 facts snapshot."""
+    # Use anomaly_type from Layer 1 prediction if available
+    anomaly_type = "unknown"
+    if prediction:
+        anomaly_type = prediction.get("anomaly_type", "unknown")
+
     if not calc:
+        # Fallback for anomaly_type if prediction was missing
+        if anomaly_type == "unknown":
+            anomaly_type = "missing_payment" if tx.net_amount == 0 else "unknown"
+
         return {
             "variance": 0,
             "variance_pct": 0,
             "platform_net": float(tx.net_amount),
             "contractual_net": 0,
-            "anomaly_type": "missing_payment" if tx.net_amount == 0 else "unknown"
+            "anomaly_type": anomaly_type
         }
 
-    # Determine anomaly type from variance
-    variance = calc.variance
-    if variance < -AMOUNT_TOLERANCE:
-        anomaly_type = "partial_payment"
-        if tx.incentives and sum(inc.amount for inc in tx.incentives) > 0:
-            incentive_amt = sum(inc.amount for inc in tx.incentives)
-            if abs(variance - (-incentive_amt)) <= AMOUNT_TOLERANCE:
-                anomaly_type = "missing_incentive"
-    elif variance > AMOUNT_TOLERANCE:
-        anomaly_type = "overpayment"
-    else:
-        anomaly_type = "perfect_match"
+    # When prediction exists, use reconciliation variance (settlement vs expected)
+    # instead of contract variance (contractual_net vs platform_net)
+    variance = float(calc.variance)
+    variance_pct = float(calc.variance_pct)
 
-    # Check for duplicate - use all_transactions if provided
-    if all_transactions and _is_duplicate_transaction(tx, all_transactions):
-        anomaly_type = "duplicate_settlement"
+    if prediction:
+        pred_variance = Decimal(str(prediction.get("variance", 0)))
+        pred_expected = Decimal(str(prediction.get("expected_amount", 0)))
+        if pred_expected != 0:
+            variance = float(pred_variance)
+            variance_pct = float((pred_variance / pred_expected) * Decimal("100"))
+        else:
+            variance = float(pred_variance)
+            variance_pct = 0.0
 
     return {
-        "variance": float(variance),
-        "variance_pct": float(calc.variance_pct),
+        "variance": variance,
+        "variance_pct": variance_pct,
         "platform_net": float(calc.platform_net),
         "contractual_net": float(calc.contractual_net),
         "anomaly_type": anomaly_type
     }
-
-
-def _is_duplicate_transaction(tx, all_transactions) -> bool:
-    """Check if this transaction is a duplicate settlement."""
-    for other_tx in all_transactions:
-        if other_tx is not tx:
-            if (other_tx.platform == tx.platform and
-                other_tx.transaction_date == tx.transaction_date and
-                other_tx.net_amount == tx.net_amount and
-                other_tx.net_amount > 0):
-                return True
-    return False
 
 
 def pc_index_to_tx_id(index: int, transactions: List) -> Optional[str]:
@@ -431,13 +431,16 @@ def _decide_transaction(
 def _create_auto_resolved_decisions(
     partner_id: str,
     transactions: List,
-    payment_calcs: List[PaymentCalculation]
+    payment_calcs: List[PaymentCalculation],
+    reconciliation_predictions: List[Dict[str, Any]] = None
 ) -> List[ControllerDecision]:
     """Create RESOLVED_AUTOMATICALLY decisions when no findings exist."""
+    predictions_by_tx = {p.get("transaction_id"): p for p in (reconciliation_predictions or [])}
     decisions = []
     for i, tx in enumerate(transactions):
         calc = payment_calcs[i] if i < len(payment_calcs) else None
-        layer1_facts = _extract_layer1_facts(calc, tx)
+        prediction = predictions_by_tx.get(tx.transaction_id)
+        layer1_facts = _extract_layer1_facts(calc, tx, prediction)
 
         decisions.append(ControllerDecision(
             transaction_id=tx.transaction_id,

@@ -85,9 +85,9 @@ class LegalBasis(BaseModel):
 class ContractVersion(BaseModel):
     #region Why should this class exist?
     """Let's say a delivery partner works in zomato and uber simultaneously, every platform has it's
-    own version such as v1, v2, v2.1, etc. In each and every version, new changes in rules, platform 
+    own version such as v1, v2, v2.1, etc. In each and every version, new changes in rules, platform
     changes are committed. Therefore we need to capture each and every version in every platforms. It
-    also includes from which date the rules are valid and till when the rules will be valid. Therefore 
+    also includes from which date the rules are valid and till when the rules will be valid. Therefore
     we need to capture all that information, along with specific clauses."""
     #endregion
     platform: str = Field(description="Uber, Zomato,etc")
@@ -98,6 +98,35 @@ class ContractVersion(BaseModel):
     confidence: Decimal = Field(ge=0, le=1, description="Confidence from 0 to 1") #ge = greater than or equal to, le = lesser than or equal to
     clauses: List[str] = Field(default_factory=list, description="Key Contract Clauses")
     #we use 'default_list=list' because every platform requires it's own personal List, if we don't include this all platform's clauses will be stored in a single list.
+
+    # Structured contract parameters (populated from platform_rules JSONB)
+    base_pay_per_order: Optional[Decimal] = Field(default=None, description="Base pay per delivered order")
+    distance_rate_per_km: Optional[Decimal] = Field(default=None, description="Distance pay rate per km")
+    wait_free_minutes: Optional[int] = Field(default=None, description="Free waiting minutes before compensation")
+    wait_rate_per_min: Optional[Decimal] = Field(default=None, description="Wait time rate per minute")
+    wait_max_billable_minutes: Optional[int] = Field(default=None, description="Maximum billable waiting minutes")
+    peak_amount: Optional[Decimal] = Field(default=None, description="Peak hour per-order incentive amount")
+    peak_windows: List[str] = Field(default_factory=list, description="Peak hour time windows")
+    weekend_amount: Optional[Decimal] = Field(default=None, description="Weekend per-order incentive amount")
+    weekend_days: List[str] = Field(default_factory=list, description="Weekend days for incentive")
+    daily_threshold: Optional[int] = Field(default=None, description="Daily order count threshold for bonus")
+    daily_bonus: Optional[Decimal] = Field(default=None, description="Daily target bonus amount")
+    weekly_threshold: Optional[int] = Field(default=None, description="Weekly order count threshold for bonus")
+    weekly_bonus: Optional[Decimal] = Field(default=None, description="Weekly target bonus amount")
+    platform_fee_rate: Optional[Decimal] = Field(default=None, description="Platform service fee rate (percentage)")
+    platform_fee_name: Optional[str] = Field(default=None, description="Platform fee name")
+    insurance_amount: Optional[Decimal] = Field(default=None, description="Per-order insurance premium")
+    insurance_name: Optional[str] = Field(default=None, description="Insurance premium name")
+    penalty_trigger_minutes: Optional[int] = Field(default=None, description="SLA threshold minutes for late penalty")
+    penalty_amount: Optional[Decimal] = Field(default=None, description="Late delivery penalty amount")
+    penalty_name: Optional[str] = Field(default=None, description="Late penalty name")
+    campaign_amount: Optional[Decimal] = Field(default=None, description="Campaign incentive amount")
+    campaign_name: Optional[str] = Field(default=None, description="Campaign name")
+    campaign_effective_from: Optional[date] = Field(default=None, description="Campaign effective from date")
+    campaign_effective_to: Optional[date] = Field(default=None, description="Campaign effective to date")
+    campaign_weekdays_only: bool = Field(default=False, description="Whether campaign applies only on weekdays")
+    campaign_windows: List[str] = Field(default_factory=list, description="Campaign time windows")
+    campaign_min_distance_km: Optional[Decimal] = Field(default=None, description="Campaign minimum distance in km")
 
 class Deduction(BaseModel):
     name: str = Field(description="Such as platform_fee, penalty_fee")
@@ -124,6 +153,9 @@ class TransactionRecord(BaseModel):
     duration_minutes: Optional[int] = Field(description="Duration if applicable")
     wait_time_minutes: Optional[int] = Field(description="Wait time if applicable")
     contract_version: Optional[str] = Field(default=None, description="Which contract version is evidenced by the source")
+    order_timestamp: Optional[datetime] = Field(default=None, description="Order placement timestamp")
+    pickup_timestamp: Optional[datetime] = Field(default=None, description="Pickup timestamp")
+    completed_timestamp: Optional[datetime] = Field(default=None, description="Completion timestamp")
 
 class PaymentCalculation(BaseModel):
     platform_net: Decimal = Field(description="What Platform actually paid")
@@ -216,16 +248,23 @@ class PartnerProfile(BaseModel):
 class FairPayState(BaseModel):
     partner_id: str = Field(description="Who we are Auditing")
     partner_profile: PartnerProfile = Field(description="Nested Partner's Profile form class PartnerProfile")
+    pdf_paths: List[str] = Field(default_factory=list, description="List of PDF files to ingest")
+    image_paths: List[str] = Field(default_factory=list, description="List of image files to ingest")
+    platform: str = Field(default="", description="The target platform for the audit")
+    use_local_laws: bool = Field(default=True, description="Whether to resolve laws locally instead of calling vector DB")
     transactions: List[TransactionRecord] = Field(default_factory=list, description="All reconstructed transactions")
     contract_versions: List[ContractVersion] = Field(default_factory=list, description="Applicable contract versions")
     applicable_laws: List[LegalBasis] = Field(default_factory=list, description="Law matched per transaction")
+    applicable_laws_per_tx: List[Dict[str, Any]] = Field(default_factory=list, description="Applicable laws associated per transaction")
     payment_calculations: List[PaymentCalculation] = Field(default_factory=list, description="Per-transaction payment analysis")
+    reconciliation_payment_calculations: List[PaymentCalculation] = Field(default_factory=list, description="Reconciled payment calculations")
     business_cost_calculations: List[BusinessCostCalculation] = Field(default_factory=list, description="Per-Transaction cost analysis")
-    audit_findings: AuditFindings = Field(default = None, description="Aggregated findings container")
+    audit_findings: Optional[AuditFindings] = Field(default = None, description="Aggregated findings container")
     evidence_gaps: List[str] = Field(default_factory=list, description="Missing data flags")
     classification_probability: Decimal = Field(ge=0,le=1,description="Probability of being legally classified as an employee (vs contractor)")
     counterfactual_scenarios: Optional[List[Dict]] = Field(default=None, description="For debate system(Phase 2)")
     reconciliation_predictions: List[Dict[str, Any]] = Field(default_factory=list, description="Shared reconciliation outputs")
+    work_time: List[Dict[str, Any]] = Field(default_factory=list, description="Working time read from documents: {date, start, end, minutes}")
 
     # Layer 3: Controller outputs
     controller_decisions: List[ControllerDecision] = Field(default_factory=list, description="Per-transaction operational decisions")

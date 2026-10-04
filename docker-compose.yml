@@ -3,14 +3,16 @@ version: '3.8'
 # ═══════════════════════════════════════════════════════════════
 # FAIRPAY ENGINE — FULL LOCAL STACK
 # ═══════════════════════════════════════════════════════════════
-# Single command: docker-compose up --build
+# Setup:  copy .env.example to .env (repo root) and fill in your keys.
+# Start:  docker compose --profile dev up --build
 #
 # Includes:
-#   • Backend (FastAPI) + Frontend (Vite/React)
+#   • Backend (FastAPI) + Frontend (Vite/React, `dev` profile)
 #   • Local Supabase stack: PostgreSQL, Auth, REST, Realtime, Storage, Studio
-#   • All data persists in ./supabase/data and ./supabase/storage
+#   • Database data persists in the fairpay_pgdata volume; it is created
+#     and seeded automatically on first start
 #
-# REQUIRED: Create .env with your GROQ_API_KEY, QDRANT_URL, QDRANT_API_KEY
+# The Telegram bot runs on the host, not in Docker (see HOW_TO_RUN.md).
 # ═══════════════════════════════════════════════════════════════
 
 services:
@@ -18,18 +20,27 @@ services:
   # LOCAL SUPABASE STACK (6 services)
   # ═══════════════════════════════════════════════════════════════
 
-  # PostgreSQL Database — Local only, data in ./supabase/data
+  # PostgreSQL Database — local only, data in the fairpay_pgdata volume
   db:
-    image: supabase/postgres:17.4.1.040
+    # Built from the repository (supabase/db/Dockerfile) when the image is
+    # missing, e.g. on a fresh clone; an existing local image is reused.
+    build:
+      context: ./supabase/db
+    image: fairpay-postgres:latest
     container_name: fairpay_db
     environment:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: postgres
-      POSTGRES_USER: postgres
     ports:
       - "54322:5432"
     volumes:
-      - ./supabase/data:/var/lib/postgresql/data
+      - fairpay_pgdata:/var/lib/postgresql/data
+      # First-boot initialisation: schema + Bobby's 30-day data + simulation
+      # and Telegram tables. Runs ONLY when fairpay_pgdata is empty.
+      - ./supabase/db/init/zz-fairpay-init.sql:/docker-entrypoint-initdb.d/zz-fairpay-init.sql:ro
+      - ./bobby_fairpay_seed.sql:/fairpay-init/bobby_fairpay_seed.sql:ro
+      - ./simulations_table.sql:/fairpay-init/simulations_table.sql:ro
+      - ./telegram_tables.sql:/fairpay-init/telegram_tables.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -69,7 +80,7 @@ services:
       GOTRUE_EXTERNAL_URL: http://localhost:54321
       GOTRUE_DISABLE_SIGNUP: "false"
     ports:
-      - "54322:9999"
+      - "54326:9999"
     depends_on:
       db:
         condition: service_healthy
@@ -78,13 +89,13 @@ services:
 
   # Supabase Studio — Local web UI at http://localhost:54323
   studio:
-    image: supabase/studio:20250708-3a8b9b7
+    image: supabase/studio:latest
     container_name: fairpay_studio
     environment:
       STUDIO_DEFAULT_ORGANIZATION: supabase
       STUDIO_DEFAULT_PROJECT: compliance-auditor
       SUPABASE_URL: http://rest:3000
-      SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNvbXBsaWFuY2UtYXVkaXRvciIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzM0NTY3MjAwLCJleHAiOjIwNTAxNDMyMDB9.AdL3r5N5LQ8xK8xK8xK8xK8xK8xK8xK8xK8xK8xK8x
+      SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNvbXBsaWFuY2UtYXVkaXRvciIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzM0NTY3MjAwLCJleHAiOjIwNTAxNDMyMDB9.RUTBxvLXcucyr3uc_8kwulN1lswinEB65uf2b9k49_w
     ports:
       - "54323:3000"
     depends_on:
@@ -119,7 +130,7 @@ services:
     image: supabase/storage-api:v1.18.0
     container_name: fairpay_storage
     environment:
-      ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNvbXBsaWFuY2UtYXVkaXRvciIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzM0NTY3MjAwLCJleHAiOjIwNTAxNDMyMDB9.AdL3r5N5LQ8xK8xK8xK8xK8xK8xK8xK8xK8xK8xK8x
+      ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNvbXBsaWFuY2UtYXVkaXRvciIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzM0NTY3MjAwLCJleHAiOjIwNTAxNDMyMDB9.RUTBxvLXcucyr3uc_8kwulN1lswinEB65uf2b9k49_w
       SERVICE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNvbXBsaWFuY2UtYXVkaXRvciIsInJvbGUiOiJzZXJ2aWNlX3JvbGUiLCJpYXQiOjE3MzQ1NjcyMDAsImV4cCI6MjA1MDE0MzIwMH0.AdL3r5N5LQ8xK8xK8xK8xK8xK8xK8xK8xK8xK8xK8x
       POSTGREST_URL: http://rest:3000
       PGRST_JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
@@ -154,25 +165,41 @@ services:
     container_name: fairpay-backend
     ports:
       - "8000:8000"
+    # Secrets (GROQ_API_KEY, TELEGRAM_BOT_TOKEN, ...) are injected at run time
+    # from the root .env (copy .env.example) - never baked into the image
+    # (see Backend/.dockerignore). Backend/.env is still read as a legacy
+    # fallback; the root .env overrides it. Values under `environment` below
+    # take precedence over both files.
+    env_file:
+      - path: ./Backend/.env
+        required: false
+      - path: ./.env
+        required: false
     environment:
-      - GROQ_API_KEY=${GROQ_API_KEY}
-      - QDRANT_URL=${QDRANT_URL}
-      - QDRANT_API_KEY=${QDRANT_API_KEY}
+      # Postgres via the compose network (host runs use localhost:54322)
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=postgres
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
       - SUPABASE_URL=http://rest:3000
-      - SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNvbXBsaWFuY2UtYXVkaXRvciIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzM0NTY3MjAwLCJleHAiOjIwNTAxNDMyMDB9.AdL3r5N5LQ8xK8xK8xK8xK8xK8xK8xK8xK8xK8xK8x
+      - SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNvbXBsaWFuY2UtYXVkaXRvciIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzM0NTY3MjAwLCJleHAiOjIwNTAxNDMyMDB9.RUTBxvLXcucyr3uc_8kwulN1lswinEB65uf2b9k49_w
       - TESSERACT_PATH=/usr/bin/tesseract
     volumes:
       - ./Backend/real_laws.json:/app/real_laws.json:ro
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
+      # python:3.11-slim has no curl; use the Python standard library instead
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/docs', timeout=5)"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
     depends_on:
-      rest:
+      db:
         condition: service_healthy
+      rest:
+        condition: service_started
     networks:
       - fairpay-network
 
@@ -185,8 +212,12 @@ services:
     ports:
       - "5173:5173"
     environment:
-      - VITE_API_BASE_URL=http://backend:8000
+      # The browser calls the backend, so use the host-published port
+      # (the `backend` hostname only resolves inside the Docker network).
+      - VITE_API_BASE_URL=http://localhost:8000
       - VITE_DEMO_MODE=false
+      # Passed through from the root .env only when set there.
+      - VITE_TELEGRAM_BOT_URL
     volumes:
       - ./frontend/frontend:/app
       - /app/node_modules
@@ -202,6 +233,14 @@ services:
     build:
       context: ./frontend/frontend
       dockerfile: Dockerfile.prod
+      # VITE_* values are baked into the bundle at build time. They are public
+      # (shipped to the browser), so they are passed as build args instead of
+      # copying the frontend .env into the image. Set them in your shell or a
+      # root .env file before building.
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+        VITE_DEMO_MODE: ${VITE_DEMO_MODE:-false}
+        VITE_TELEGRAM_BOT_URL: ${VITE_TELEGRAM_BOT_URL:-}
     container_name: fairpay-frontend-prod
     ports:
       - "3000:80"
@@ -214,6 +253,9 @@ services:
       - prod
     networks:
       - fairpay-network
+
+volumes: 
+  fairpay_pgdata:
 
 networks:
   fairpay-network:

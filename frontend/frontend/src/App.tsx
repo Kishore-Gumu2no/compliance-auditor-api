@@ -1,14 +1,17 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import './App.css';
-import { createEarningsStream, uploadEvidence, type StreamMessage, type AuditResponse } from './services/api';
+import { createEarningsStream, auditPartnerHistory, type StreamMessage, type AuditResponse } from './services/api';
 import { CounterfactualSimulator } from './components/CounterfactualSimulator';
-import { IncentiveModelCard } from './components/IncentiveModelCard';
-import { GradedFindingsDisplay } from './components/GradedFindingsDisplay';
 import { SyntheticDataUpload } from './components/SyntheticDataUpload';
+import SimplifiedAuditResult from './components/SimplifiedAuditResult';
+import TelegramAuditNotice from './components/TelegramAuditNotice';
 import { SAMPLE_AUDIT_RESULTS, SAMPLE_PLATFORM_EARNINGS, formatCurrency, getStatusColor, type SampleAuditResult } from './services/demoData';
 
 // Partner ID for Bobby - this should come from auth in production
-const PARTNER_ID = 'bobby_delivery_partner';
+const PARTNER_ID = 'bobby';
+
+// Link to the FairPay Telegram bot, configured per environment (never hardcoded).
+const TELEGRAM_BOT_URL: string = (import.meta.env.VITE_TELEGRAM_BOT_URL || '').trim();
 
 // Platform types for live earnings
 interface PlatformEarnings {
@@ -36,17 +39,16 @@ function App() {
   const [isConnected, setIsConnected] = useState(isDemoMode); // true in demo mode
   const wsRef = useRef<WebSocket | null>(null);
 
-  // Evidence Upload State
-  const [selectedImages, setSelectedImages] = useState<File[]>([]);
-  const [selectedPdfs, setSelectedPdfs] = useState<File[]>([]);
-  const [isUploading, setIsUploading] = useState(false);
+  // Audit result state (evidence arrives through the Telegram bot)
   const [uploadResult, setUploadResult] = useState<AuditResponse | null>(null);
   const [demoAuditResult, setDemoAuditResult] = useState<SampleAuditResult | null>(null);
-  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  // Discover Audit State (Milestone 2 CTA)
+  const [isDiscoverLoading, setIsDiscoverLoading] = useState(false);
+  const [discoverError, setDiscoverError] = useState<string | null>(null);
 
   // Demo state
   const [demoMode] = useState(isDemoMode);
-  const [currentDemoIndex, setCurrentDemoIndex] = useState(0);
 
   // Derive total earnings during render (avoids sync setState in effect)
   const totalEarnings = Object.values(platformData).reduce((sum, val) => sum + val, 0);
@@ -96,75 +98,6 @@ function App() {
     };
   }, [demoMode, handleStreamMessage]);
 
-  // Handle file selection
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length > 20) {
-      setUploadError('Too many images! Maximum 20 allowed.');
-      return;
-    }
-    setSelectedImages(files);
-    setUploadError(null);
-  };
-
-  const handlePdfSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length > 5) {
-      setUploadError('Too many PDFs! Maximum 5 allowed.');
-      return;
-    }
-    setSelectedPdfs(files);
-    setUploadError(null);
-  };
-
-  // Handle evidence upload
-  const handleUpload = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (selectedImages.length === 0 && selectedPdfs.length === 0) {
-      setUploadError('Please select at least one file to upload.');
-      return;
-    }
-
-    setIsUploading(true);
-    setUploadError(null);
-    setUploadResult(null);
-    setDemoAuditResult(null);
-
-    if (demoMode) {
-      // Simulate processing delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      const result = SAMPLE_AUDIT_RESULTS[currentDemoIndex % SAMPLE_AUDIT_RESULTS.length];
-      setDemoAuditResult(result);
-      setCurrentDemoIndex(prev => prev + 1);
-      setIsUploading(false);
-      return;
-    }
-
-    try {
-      const result = await uploadEvidence({
-        images: selectedImages.length > 0 ? selectedImages : undefined,
-      pdfs: selectedPdfs.length > 0 ? selectedPdfs : undefined,
-      partner_profile: JSON.stringify({
-      partner_id: "PTR_DEMO",
-      name: "Demo Partner",
-      phone: "9999999999",
-      vehicle_type: "bike",
-      petrol_per_km: 8.5,
-      zone: "Bengaluru",
-      platform_accounts: ["Zomato"],
-      active_since: "2024-01-01"
-      }),
-      platform: "zomato",
-      contract_versions: JSON.stringify([])
-      });
-      setUploadResult(result);
-    } catch (error) {
-      setUploadError(error instanceof Error ? error.message : 'Upload failed');
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
   const handleDemoAudit = (index: number) => {
     setDemoAuditResult(SAMPLE_AUDIT_RESULTS[index]);
     setUploadResult(null);
@@ -177,9 +110,28 @@ function App() {
     }, 100);
   };
 
-  const clearResults = () => {
+  const handleDiscoverAudit = async () => {
+    setIsDiscoverLoading(true);
+    setDiscoverError(null);
     setUploadResult(null);
     setDemoAuditResult(null);
+
+    try {
+      const result = await auditPartnerHistory('bobby');
+      setUploadResult(result);
+
+      // Scroll to audit results section
+      setTimeout(() => {
+        const resultsSection = document.getElementById('audit-results');
+        if (resultsSection) {
+          resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
+    } catch (error) {
+      setDiscoverError(error instanceof Error ? error.message : 'Failed to run history audit');
+    } finally {
+      setIsDiscoverLoading(false);
+    }
   };
 
   return (
@@ -193,10 +145,12 @@ function App() {
           </div>
           <div className="nav-links">
             <a href="#live-earnings" className="nav-link">Live Earnings</a>
-            <a href="#why-fairpay" className="nav-link">Why FairPay?</a>
+            <a href="#why-fairpay" className="nav-link">The Problem</a>
             <a href="#evidence-upload" className="nav-link">Upload Evidence</a>
-            <a href="#privacy" className="nav-link">Privacy</a>
             <a href="#audit-results" className="nav-link">Audit Results</a>
+            <a href="#what-if-i-earn-more" className="nav-link">How to Earn More</a>
+            <a href="#privacy" className="nav-link">Privacy</a>
+            <a href="#synthetic-data" className="nav-link">Synthetic Data</a>
             {demoMode && (
               <span className="demo-badge">DEMO MODE</span>
             )}
@@ -260,10 +214,32 @@ function App() {
               <span className={`status-dot ${isConnected ? 'active' : 'inactive'}`} />
               <span>{demoMode ? 'Demo mode - simulated live data' : isConnected ? 'Live stream active' : 'Connecting...'}</span>
             </div>
+
+            {/* Milestone 2 CTA: Discover how you can earn more */}
+            <div className="cta-discover-section">
+              <button
+                className="cta-discover-button"
+                onClick={handleDiscoverAudit}
+                disabled={isDiscoverLoading}
+                aria-label="Run 30-day audit to discover earning optimization"
+              >
+                {isDiscoverLoading ? (
+                  <>
+                    <span className="loading-spinner" style={{ marginRight: 'var(--spacing-8)' }} />
+                    Analyzing 30-day history...
+                  </>
+                ) : (
+                  'Discover how you can earn more'
+                )}
+              </button>
+              {discoverError && (
+                <p className="cta-discover-error" role="alert">{discoverError}</p>
+              )}
+            </div>
           </div>
         </section>
 
-        {/* Section 2: Why FairPay? */}
+        {/* Section 2: The Problem */}
         <section id="why-fairpay" className="section why-fairpay-section">
           <div className="container">
             <div className="why-fairpay-content">
@@ -309,7 +285,7 @@ function App() {
         {/* Section 3: Evidence Upload */}
         <section id="evidence-upload" className="section evidence-upload-section">
           <div className="container">
-            <div className="upload-content">
+            <div className="upload-content upload-content-split">
               <div className="upload-info">
                 <span className="section-badge">EVIDENCE</span>
                 <h2 className="section-title-large">Upload Your Evidence</h2>
@@ -318,116 +294,66 @@ function App() {
                   processes your documents locally, redacts all personal information, and determines whether you received
                   your rightful pay.
                 </p>
+              </div>
 
-                <div className="evidence-types">
-                  <h3>Supported Evidence Types</h3>
-                  <ul>
+              {/* One compact card for every supported evidence type */}
+              <div className="evidence-card evidence-card-side">
+                  <h3 className="evidence-card-title">Supported documents</h3>
+                  <ul className="evidence-card-list">
                     <li>
-                      <span className="evidence-icon">📸</span>
+                      <span className="evidence-icon" aria-hidden="true">📸</span>
                       <div>
                         <strong>Earnings Screenshots</strong>
-                        <span>Platform earnings screenshots, payment confirmations</span>
+                        <span>Platform earnings screenshots and payment confirmations</span>
                       </div>
                     </li>
                     <li>
-                      <span className="evidence-icon">📄</span>
+                      <span className="evidence-icon" aria-hidden="true">📄</span>
                       <div>
                         <strong>Shift Records</strong>
-                        <span>Work schedules, shift timings, hours logged</span>
+                        <span>Work schedules, shift timings, and hours logged</span>
                       </div>
                     </li>
                     <li>
-                      <span className="evidence-icon">💳</span>
+                      <span className="evidence-icon" aria-hidden="true">💳</span>
                       <div>
                         <strong>Payment Records</strong>
-                        <span>Bank statements, UPI transactions, payout receipts</span>
+                        <span>Bank statements, UPI transactions, and payout receipts</span>
                       </div>
                     </li>
                     <li>
-                      <span className="evidence-icon">📋</span>
+                      <span className="evidence-icon" aria-hidden="true">📋</span>
                       <div>
                         <strong>Other Documents</strong>
-                        <span>Contracts, offer letters, platform policies</span>
+                        <span>Contracts, offer letters, and platform policies</span>
                       </div>
                     </li>
                   </ul>
-                </div>
-
-                <div className="zero-trust-explanation">
-                  <h3>How Zero-Trust Ingestion Works</h3>
-                  <ol>
-                    <li><strong>Local Extraction:</strong> Text is extracted from your images/PDFs using OCR.</li>
-                    <li><strong>PII Redaction:</strong> Names, phone numbers, emails, and addresses are automatically masked.</li>
-                    <li><strong>AI Analysis:</strong> Only redacted data is sent to the audit engine for earnings extraction.</li>
-                    <li><strong>Compliance Check:</strong> Extracted data is verified against temporal labor law database.</li>
-                    <li><strong>Audit Receipt:</strong> Immutable SHA-256 receipt generated for transparency.</li>
-                  </ol>
-                </div>
               </div>
+            </div>
 
+            {/* Documents are submitted through the Telegram bot; the website shows results. */}
+            {TELEGRAM_BOT_URL ? (
+              <a
+                className="telegram-cta"
+                href={TELEGRAM_BOT_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <span className="telegram-cta-icon" aria-hidden="true">📨</span>
+                <span className="telegram-cta-text">Upload your documents through Telegram</span>
+                <span className="telegram-cta-arrow" aria-hidden="true">→</span>
+              </a>
+            ) : (
+              <div className="telegram-cta telegram-cta-disabled" aria-disabled="true">
+                <span className="telegram-cta-icon" aria-hidden="true">📨</span>
+                <span className="telegram-cta-text">Upload your documents through Telegram</span>
+                <span className="telegram-cta-note">Telegram link not configured (set VITE_TELEGRAM_BOT_URL)</span>
+              </div>
+            )}
+
+            {demoMode && (
               <div className="upload-area">
-                <form onSubmit={handleUpload} className="upload-form">
-                  <div className="file-inputs">
-                    <div className="file-input-group">
-                      <label className="file-label">
-                        <span className="file-icon">📷</span>
-                        <span>Images (Max 20)</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          multiple
-                          onChange={handleImageSelect}
-                          disabled={isUploading}
-                        />
-                      </label>
-                      {selectedImages.length > 0 && (
-                        <div className="selected-files">
-                          {selectedImages.length} image(s) selected
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="file-input-group">
-                      <label className="file-label">
-                        <span className="file-icon">📄</span>
-                        <span>PDFs (Max 5)</span>
-                        <input
-                          type="file"
-                          accept="application/pdf"
-                          multiple
-                          onChange={handlePdfSelect}
-                          disabled={isUploading}
-                        />
-                      </label>
-                      {selectedPdfs.length > 0 && (
-                        <div className="selected-files">
-                          {selectedPdfs.length} PDF(s) selected
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {uploadError && (
-                    <div className="upload-error" role="alert">
-                      {uploadError}
-                    </div>
-                  )}
-
-                  <button
-                    type="submit"
-                    className="upload-button"
-                    disabled={isUploading || (selectedImages.length === 0 && selectedPdfs.length === 0)}
-                  >
-                    {isUploading && <span className="loading-spinner" />}
-                    <span className="button-icon" aria-hidden="true">⬆️</span>
-                    <span>{isUploading ? 'Processing...' : 'Touch here to Upload'}</span>
-                  </button>
-
-                  <p className="upload-hint">
-                    Maximum 20 images and 5 PDFs. Personal details will be redacted automatically.
-                  </p>
-                </form>
-
                 {/* Demo audit samples in demo mode */}
                 {demoMode && (
                   <div className="demo-samples">
@@ -454,14 +380,74 @@ function App() {
                   </div>
                 )}
               </div>
+            )}
+          </div>
+        </section>
+
+        {/* Section 4: Audit Results */}
+        <section id="audit-results" className="section audit-results-section">
+          <div className="container">
+            <div className="audit-results-content">
+              <span className="section-badge">RESULTS</span>
+              <h2 className="section-title-large">Audit Results</h2>
+
+              {/* Announces audits submitted through the Telegram bot. */}
+              <TelegramAuditNotice
+                partnerId={PARTNER_ID}
+                onView={(result) => {
+                  setDemoAuditResult(null);
+                  setUploadResult(result);
+                }}
+              />
+
+              {uploadResult || demoAuditResult ? (
+                <SimplifiedAuditResult
+                  predictions={uploadResult?.ai_analysis?.reconciliation_predictions || []}
+                  evidenceGaps={uploadResult?.ai_analysis?.evidence_gaps || []}
+                  uploadResult={uploadResult}
+                  demoAuditResult={demoAuditResult}
+                />
+              ) : (
+                <div className="audit-empty-state">
+                  <div className="empty-icon">📋</div>
+                  <h3>No Audit Results Yet</h3>
+                  <p>Upload your earnings evidence in the section above to run your first compliance audit.</p>
+                  <p className="empty-hint">The audit will check your pay against minimum wage laws, calculate discrepancies, and provide a verifiable receipt.</p>
+                  {demoMode && (
+                    <div className="demo-samples" style={{ marginTop: 'var(--spacing-32)' }}>
+                      <p className="demo-samples-hint">Or try a sample audit:</p>
+                      <div className="demo-sample-buttons">
+                        {SAMPLE_AUDIT_RESULTS.map((sample, index) => (
+                          <button
+                            key={sample.id}
+                            className="demo-sample-button"
+                            onClick={() => handleDemoAudit(index)}
+                            style={{ borderColor: getStatusColor(sample.status) } as React.CSSProperties}
+                          >
+                            <span className="demo-sample-partner">{sample.partnerName}</span>
+                            <span className="demo-sample-status" style={{ color: getStatusColor(sample.status) }}>
+                              {sample.status}
+                            </span>
+                            <span className="demo-sample-discrepancy">
+                              {formatCurrency(sample.discrepancy)}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </section>
 
-        {/* Synthetic Data Upload */}
-        <SyntheticDataUpload />
+        {/* Section 5: How to Earn More (Counterfactual Simulator) */}
+        <CounterfactualSimulator
+          initialAuditContext={uploadResult?.ai_analysis?.counterfactual_context}
+        />
 
-        {/* Section 4: Privacy / Trust */}
+        {/* Section 6: Privacy / Trust */}
         <section id="privacy" className="section privacy-section">
           <div className="container">
             <div className="privacy-content">
@@ -498,146 +484,12 @@ function App() {
           </div>
         </section>
 
-        {/* Section 5: Audit Results */}
-        <section id="audit-results" className="section audit-results-section">
+        {/* Section 7: Submit Your Synthetic Data */}
+        <section id="synthetic-data" className="section synthetic-data-section">
           <div className="container">
-            <div className="audit-results-content">
-              <span className="section-badge">RESULTS</span>
-              <h2 className="section-title-large">Audit Results</h2>
-
-              {uploadResult || demoAuditResult ? (
-                <div className="audit-results-display">
-                  <div className="result-header">
-                    <div
-                      className={`result-status ${(uploadResult?.ai_analysis.final_status || demoAuditResult?.status || '').toLowerCase().includes('underpaid') ? 'status-underpaid' : (uploadResult?.ai_analysis.final_status || demoAuditResult?.status || '').toLowerCase().includes('overpaid') ? 'status-overpaid' : 'status-correct'}`}
-                    >
-                      {uploadResult?.ai_analysis.final_status || demoAuditResult?.status}
-                    </div>
-                    <div className="receipt-id">
-                      Receipt: <code>{(uploadResult?.ai_analysis.receipt_id || demoAuditResult?.receiptId || '').substring(0, 16)}...</code>
-                    </div>
-                  </div>
-
-                  <div className="result-details">
-                    <div className="result-card">
-                      <h4>Audit Summary</h4>
-                      <p>
-                        {demoAuditResult?.auditDetails.explanation ||
-                         'The compliance audit has been completed. Your earnings have been verified against applicable labor laws for the relevant period.'}
-                      </p>
-                    </div>
-
-                    <div className="result-card">
-                      <h4>Receipt ID</h4>
-                      <code className="full-receipt">{uploadResult?.ai_analysis.receipt_id || demoAuditResult?.receiptId}</code>
-                      <p className="receipt-note">Save this receipt for your records. It serves as an immutable proof of the audit.</p>
-                    </div>
-                  </div>
-
-                  {demoAuditResult && (
-                    <div className="result-card" style={{ marginTop: 'var(--spacing-20)' }}>
-                      <h4>Detailed Breakdown</h4>
-                      <div style={{ display: 'grid', gap: 'var(--spacing-12)', fontFamily: 'var(--font-suisse-intl)', fontSize: 'var(--text-body)', color: 'var(--color-ash)' }}>
-                        <div><strong>Platform:</strong> {demoAuditResult.platform}</div>
-                        <div><strong>Shift Date:</strong> {demoAuditResult.shiftDate}</div>
-                        <div><strong>Hours Worked:</strong> {demoAuditResult.hoursWorked} hrs</div>
-                        <div><strong>Hourly Rate:</strong> {formatCurrency(demoAuditResult.rate)}</div>
-                        <div><strong>Expected Payout:</strong> {formatCurrency(demoAuditResult.expectedPayout)}</div>
-                        <div><strong>Actual Payout:</strong> {formatCurrency(demoAuditResult.actualPayout)}</div>
-                        <div><strong>Discrepancy:</strong> <span style={{ color: getStatusColor(demoAuditResult.status) }}>{formatCurrency(demoAuditResult.discrepancy)}</span></div>
-                        <div><strong>Minimum Wage (Karnataka 2024):</strong> {formatCurrency(demoAuditResult.auditDetails.minimumWage)}/hr</div>
-                        <div><strong>Compliance:</strong> {demoAuditResult.auditDetails.complianceStatus}</div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="result-actions">
-                    <button className="secondary-button" onClick={clearResults}>
-                      {demoMode ? 'Try Another Sample' : 'Run New Audit'}
-                    </button>
-                  </div>
-
-                  {/* Incentive Model Cards - only show for real upload results */}
-                  {uploadResult?.ai_analysis && uploadResult.ai_analysis.contract_compliance_findings?.length > 0 && (
-                    <div className="result-section" style={{ marginTop: 'var(--spacing-32)' }}>
-                      <h3 className="section-subtitle" style={{ fontSize: 'var(--text-xl)', fontWeight: '600', marginBottom: 'var(--spacing-16)' }}>
-                        Platform Incentive Models
-                      </h3>
-                      <div className="incentive-cards-grid">
-                        {['Zomato', 'Swiggy', 'Uber Eats'].map(p => (
-                          <IncentiveModelCard
-                            key={p}
-                            platform={p}
-                            incentive={p === 'Zomato' ? 15 : p === 'Swiggy' ? 12 : 10}
-                            adherenceRate={p === 'Zomato' ? 0.85 : p === 'Swiggy' ? 0.78 : 0.72}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Graded Findings Display - show for real upload results */}
-                  {uploadResult?.ai_analysis && (
-                    <div className="result-section" style={{ marginTop: 'var(--spacing-32)' }}>
-                      <GradedFindingsDisplay
-                        findings={[
-                          ...(uploadResult.ai_analysis.contract_compliance_findings || []).map(f => ({
-                            grade: f.grade,
-                            title: `Contract: ${f.contract_clause}`,
-                            description: f.notes
-                          })),
-                          ...(uploadResult.ai_analysis.legal_risk_findings || []).map(f => ({
-                            grade: f.grade,
-                            title: `Legal: ${f.legal_basis.statute}`,
-                            description: f.notes
-                          })),
-                          ...(uploadResult.ai_analysis.economic_concern_findings || []).map(f => ({
-                            grade: f.grade,
-                            title: `Economic: ${f.severity} severity`,
-                            description: f.notes
-                          }))
-                        ]}
-                      />
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="audit-empty-state">
-                  <div className="empty-icon">📋</div>
-                  <h3>No Audit Results Yet</h3>
-                  <p>Upload your earnings evidence in the section above to run your first compliance audit.</p>
-                  <p className="empty-hint">The audit will check your pay against minimum wage laws, calculate discrepancies, and provide a verifiable receipt.</p>
-                  {demoMode && (
-                    <div className="demo-samples" style={{ marginTop: 'var(--spacing-32)' }}>
-                      <p className="demo-samples-hint">Or try a sample audit:</p>
-                      <div className="demo-sample-buttons">
-                        {SAMPLE_AUDIT_RESULTS.map((sample, index) => (
-                          <button
-                            key={sample.id}
-                            className="demo-sample-button"
-                            onClick={() => handleDemoAudit(index)}
-                            style={{ borderColor: getStatusColor(sample.status) } as React.CSSProperties}
-                          >
-                            <span className="demo-sample-partner">{sample.partnerName}</span>
-                            <span className="demo-sample-status" style={{ color: getStatusColor(sample.status) }}>
-                              {sample.status}
-                            </span>
-                            <span className="demo-sample-discrepancy">
-                              {formatCurrency(sample.discrepancy)}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+            <SyntheticDataUpload />
           </div>
         </section>
-
-        {/* Section 6: Counterfactual Simulator */}
-        <CounterfactualSimulator />
 
       </main>
 

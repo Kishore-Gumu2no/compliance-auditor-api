@@ -116,6 +116,7 @@ def serialize_audit_state(state: Dict[str, Any]) -> Dict[str, Any]:
         "business_cost_calculations": _json_safe(state.get("business_cost_calculations") or []),
         "controller_decisions": _json_safe(state.get("controller_decisions") or []),
         "batch_summary": _json_safe(state.get("batch_summary")),
+        "work_time": _json_safe(state.get("work_time") or []),
         "counterfactual_context": build_counterfactual_context(state),
     }
 

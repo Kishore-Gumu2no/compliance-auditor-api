@@ -539,7 +539,7 @@ def evaluate_reconciliation(
             # For extra_unexplained_settlement, ground truth has orphan_settlement_id, prediction uses settlement_id as transaction_id
             if anomaly_type == AnomalyType.EXTRA_UNEXPLAINED_SETTLEMENT.value:
                 exp_eid = exp.get("orphan_settlement_id")
-                pred_key = lambda p: p.transaction_id  # prediction's settlement_id
+                pred_key = lambda p: p.earning_id.removeprefix("NONE_")
             else:
                 pred_key = lambda p: p.earning_id
 
@@ -629,7 +629,7 @@ def compare_findings(
     false_negatives = expected_count - matched
     precision = matched / actual_count if actual_count > 0 else 1.0
     recall = matched / expected_count if expected_count > 0 else 1.0
-    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 1.0
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
 
     return FindingMetrics(
         finding_type=finding_type,
@@ -929,7 +929,7 @@ def build_aggregate_report(
 
         precision = total_tp / total_detected if total_detected > 0 else 1.0
         recall = total_tp / total_expected if total_expected > 0 else 1.0
-        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 1.0
+        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
 
         recon_aggregate[anomaly_type] = ReconciliationMetrics(
             anomaly_type=anomaly_type,
@@ -961,7 +961,7 @@ def build_aggregate_report(
     contract_fn = sum(e.contract_compliance.false_negatives for e in evaluations)
     contract_prec = contract_tp / contract_detected if contract_detected > 0 else 1.0
     contract_rec = contract_tp / contract_expected if contract_expected > 0 else 1.0
-    contract_f1 = 2 * contract_prec * contract_rec / (contract_prec + contract_rec) if (contract_prec + contract_rec) > 0 else 1.0
+    contract_f1 = 2 * contract_prec * contract_rec / (contract_prec + contract_rec) if (contract_prec + contract_rec) > 0 else 0.0
     contract_metrics = FindingMetrics("contract_compliance", contract_expected, contract_detected, contract_tp, contract_fp, contract_fn, contract_prec, contract_rec, contract_f1)
 
     legal_expected = sum(e.legal_risks.expected for e in evaluations)
@@ -971,7 +971,7 @@ def build_aggregate_report(
     legal_fn = sum(e.legal_risks.false_negatives for e in evaluations)
     legal_prec = legal_tp / legal_detected if legal_detected > 0 else 1.0
     legal_rec = legal_tp / legal_expected if legal_expected > 0 else 1.0
-    legal_f1 = 2 * legal_prec * legal_rec / (legal_prec + legal_rec) if (legal_prec + legal_rec) > 0 else 1.0
+    legal_f1 = 2 * legal_prec * legal_rec / (legal_prec + legal_rec) if (legal_prec + legal_rec) > 0 else 0.0
     legal_metrics = FindingMetrics("legal_risks", legal_expected, legal_detected, legal_tp, legal_fp, legal_fn, legal_prec, legal_rec, legal_f1)
 
     economic_expected = sum(e.economic_concerns.expected for e in evaluations)
@@ -981,7 +981,7 @@ def build_aggregate_report(
     economic_fn = sum(e.economic_concerns.false_negatives for e in evaluations)
     economic_prec = economic_tp / economic_detected if economic_detected > 0 else 1.0
     economic_rec = economic_tp / economic_expected if economic_expected > 0 else 1.0
-    economic_f1 = 2 * economic_prec * economic_rec / (economic_prec + economic_rec) if (economic_prec + economic_rec) > 0 else 1.0
+    economic_f1 = 2 * economic_prec * economic_rec / (economic_prec + economic_rec) if (economic_prec + economic_rec) > 0 else 0.0
     economic_metrics = FindingMetrics("economic_concerns", economic_expected, economic_detected, economic_tp, economic_fp, economic_fn, economic_prec, economic_rec, economic_f1)
 
     # Overall Layer 2
@@ -993,7 +993,7 @@ def build_aggregate_report(
 
     findings_precision = all_tp / all_detected if all_detected > 0 else 1.0
     findings_recall = all_tp / all_expected if all_expected > 0 else 1.0
-    findings_f1 = 2 * findings_precision * findings_recall / (findings_precision + findings_recall) if (findings_precision + findings_recall) > 0 else 1.0
+    findings_f1 = 2 * findings_precision * findings_recall / (findings_precision + findings_recall) if (findings_precision + findings_recall) > 0 else 0.0
 
     successful = sum(1 for e in evaluations if e.engine_status == "complete" and not e.engine_error)
     failed = total_partners - successful

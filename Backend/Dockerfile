@@ -10,5 +10,6 @@ RUN pip install --default-timeout=1000 --no-cache-dir -r requirements.txt
 # This is used to install the dependencies from the requirements.txt file, --no-cache-dir is used to not cache the dependencies, so that the image size is small
 COPY . .
 # This is used to copy the entire project from the local machine to the container
-CMD ["fastapi", "run", "api.py", "--port", "8000"]
+CMD ["uvicorn", "api:server", "--host", "0.0.0.0", "--port", "8000"]
+# api:server is the FastAPI instance (api:app is the LangGraph workflow imported from orchestrator)
 

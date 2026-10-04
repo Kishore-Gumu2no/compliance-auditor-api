@@ -83,14 +83,6 @@ export const SAMPLE_PLATFORM_EARNINGS = {
   'Uber Eats': 2100,
 };
 
-export function getDemoAuditResult(index: number = 0): SampleAuditResult {
-  return SAMPLE_AUDIT_RESULTS[index % SAMPLE_AUDIT_RESULTS.length];
-}
-
-export function getAllDemoAuditResults(): SampleAuditResult[] {
-  return SAMPLE_AUDIT_RESULTS;
-}
-
 export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -104,4 +96,10 @@ export function getStatusColor(status: string): string {
   if (status.toLowerCase().includes('underpaid')) return '#ef4444';
   if (status.toLowerCase().includes('overpaid')) return '#f59e0b';
   return '#10b981';
+}
+
+export function auditNumber(value: number | string): number {
+  if (typeof value === 'number') return value;
+  const parsed = parseFloat(value);
+  return isNaN(parsed) ? 0 : parsed;
 }

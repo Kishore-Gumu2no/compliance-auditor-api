@@ -1,0 +1,19 @@
+# Keep environment files and host build artefacts out of the frontend images.
+# Build-time values (VITE_*) are passed as build args from docker-compose.
+
+# Environment files
+.env
+.env.*
+*.env
+!.env.example
+
+# Host dependencies and build output (the image installs and builds its own;
+# copying Windows node_modules would overwrite the Linux install)
+node_modules/
+dist/
+
+# Logs, VCS, editor
+*.log
+.git/
+.vscode/
+.idea/

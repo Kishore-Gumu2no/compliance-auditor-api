@@ -19,20 +19,25 @@ HOW DOES IT WORK: Now that th programmer has no right to call the function indep
                        gets triggered or called.
 """
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from fastapi import FastAPI, HTTPException, WebSocket, UploadFile, File, WebSocketDisconnect, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ValidationError, Field
-from orchestrator import app, run_audit
+from orchestrator import run_audit
 from database import supabase_db
 from models import PartnerProfile, ContractVersion
 from audit_context import serialize_audit_state, debate_state_from_audit_context
+from real_data import load_partner_history_from_db
 import json
 import asyncio
 import hashlib
 import os
 from typing import List, Annotated, Set, Dict, Any, Optional
 
-from debate import run_debate, DebateState
+from debate import run_debate
 
 class CounterfactualScenario(BaseModel):
     """Payload for a what-if scenario."""
@@ -167,7 +172,7 @@ async def lifespan(app: FastAPI):
 server = FastAPI(lifespan=lifespan)
 server.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5174"],
+    allow_origins=["http://localhost:5173", "http://localhost:5174"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -338,48 +343,316 @@ async def simulate_counterfactual(scenario: CounterfactualScenario) -> Counterfa
         pessimist=final_state.get("pessimist", ""),
     )
 
-class CounterfactualSliderRequest(BaseModel):
-    platform: str
-    adjusted_value: float = Field(..., description="New numeric value the user set (e.g. incentive amount)")
-    audit_context: Dict[str, Any] = Field(..., description="Sanitized audit context from a completed /audit/ response")
+# ---------- Earnings Opportunity Simulator ----------
+from decimal import Decimal
 
-@server.post("/counterfactual/slider", response_model=CounterfactualResult)
-async def slider_counterfactual(req: CounterfactualSliderRequest) -> CounterfactualResult:
-    """Re‑run the debate with a modified numeric input using structured audit context."""
-    initial_state = debate_state_from_audit_context(
-        audit_context=req.audit_context,
-        platform=req.platform,
-        description=f"Adjusted value: {req.adjusted_value}",
+from earnings_opportunity import (
+    SCENARIO_TYPES,
+    compute_opportunity,
+    debate_state_from_opportunity,
+    fetch_simulations,
+    insert_simulation,
+    load_earnings_baseline,
+    load_telegram_baseline,
+    partner_exists,
+)
+
+
+class EarningsBaseline(BaseModel):
+    """The partner's actual numbers, used to pre-fill the simulator.
+
+    Comes from the 30-day history or from a Telegram audit. When the documents
+    do not show hours or days worked, simulation_possible is false and
+    unavailable_message says why; the figures are then absent.
+    """
+    partner_id: str
+    source: str = "history"
+    submission_id: Optional[str] = None
+    simulation_possible: bool = True
+    unavailable_message: Optional[str] = None
+    days_with_earnings: Optional[int] = None
+    max_working_days: Optional[int] = None
+    expenses_available: bool = True
+    expenses_unavailable_reason: Optional[str] = None
+    baseline_notes: List[str] = []
+    period_start: Optional[str] = None
+    period_end: Optional[str] = None
+    days_worked: Optional[int] = None
+    total_orders: Optional[int] = None
+    total_income: Optional[Decimal] = None
+    total_operating_cost: Optional[Decimal] = None
+    net_after_expenses: Optional[Decimal] = None
+    total_online_hours: Optional[Decimal] = None
+    avg_income_per_day: Optional[Decimal] = None
+    avg_hours_per_day: Optional[Decimal] = None
+    income_per_hour: Optional[Decimal] = None
+    lowest_daily_hourly_rate: Optional[Decimal] = None
+    highest_daily_hourly_rate: Optional[Decimal] = None
+
+
+class OpportunityRequest(BaseModel):
+    partner_id: str = Field(..., description="Delivery partner identifier")
+    scenario_type: str = Field(..., description="One of: hours, days, expenses")
+    value: Decimal = Field(
+        ...,
+        description="Hours per day, number of working days, or expense change percent",
     )
-    final_state = await run_debate(initial_state)
-    return CounterfactualResult(
+    submission_id: Optional[str] = Field(
+        default=None,
+        description="Simulate from this Telegram audit instead of the 30-day history",
+    )
+
+
+class OpportunityResult(BaseModel):
+    """Deterministic projection plus the three personas' assessment of it."""
+    partner_id: str
+    scenario_type: str
+    scenario_inputs: Dict[str, Any]
+    baseline_earnings: Decimal
+    projected_earnings: Decimal
+    estimated_difference: Decimal
+    conservative_estimate: Optional[Decimal] = None
+    assumptions: Dict[str, Any]
+    synthesis: str
+    realist: str
+    optimist: str
+    pessimist: str
+
+
+class SavedSimulation(BaseModel):
+    simulation_id: str
+    partner_id: str
+    scenario_type: str
+    scenario_inputs: Dict[str, Any]
+    baseline_earnings: Decimal
+    projected_earnings: Decimal
+    estimated_difference: Decimal
+    assumptions: Dict[str, Any]
+    created_at: str
+
+
+def _baseline_or_error(partner_id: str, submission_id: Optional[str]) -> Dict[str, Any]:
+    """The 30-day history baseline, or one built from a Telegram audit."""
+    import telegram_store
+
+    try:
+        if submission_id:
+            merged = telegram_store.get_submission_result(partner_id, submission_id)
+            if merged is None:
+                raise HTTPException(
+                    status_code=404, detail="Telegram audit not found for this partner."
+                )
+            return load_telegram_baseline(partner_id, submission_id, merged)
+        return load_earnings_baseline(partner_id)
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to load earnings baseline: {exc}") from exc
+
+
+def _projection_or_422(
+    partner_id: str, scenario_type: str, value: Decimal, submission_id: Optional[str] = None
+) -> tuple[Dict[str, Any], Dict[str, Any]]:
+    """Load the baseline and run the deterministic calculation, or fail loudly."""
+    if scenario_type not in SCENARIO_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"scenario_type must be one of {', '.join(SCENARIO_TYPES)}.",
+        )
+    baseline = _baseline_or_error(partner_id, submission_id)
+    try:
+        projection = compute_opportunity(baseline, scenario_type, value)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return projection, baseline
+
+
+@server.get("/earnings-opportunity/baseline/{partner_id}", response_model=EarningsBaseline)
+async def get_earnings_baseline(partner_id: str, submission_id: Optional[str] = None) -> EarningsBaseline:
+    """The partner's own averages, so the UI never hardcodes defaults.
+
+    With ``submission_id`` the baseline comes from that Telegram audit.
+    """
+    baseline = _baseline_or_error(partner_id, submission_id)
+    return EarningsBaseline(**{k: v for k, v in baseline.items() if k in EarningsBaseline.model_fields})
+
+
+@server.post("/earnings-opportunity/simulate", response_model=OpportunityResult)
+async def simulate_earnings_opportunity(req: OpportunityRequest) -> OpportunityResult:
+    """Project one scenario deterministically, then have the personas assess it."""
+    projection, baseline = _projection_or_422(
+        req.partner_id, req.scenario_type, req.value, req.submission_id
+    )
+
+    debate_input = debate_state_from_opportunity(projection, baseline)
+    final_state = await run_debate(debate_input)
+
+    return OpportunityResult(
+        **projection,
         synthesis=final_state.get("synthesis", ""),
         realist=final_state.get("realist", ""),
         optimist=final_state.get("optimist", ""),
         pessimist=final_state.get("pessimist", ""),
     )
 
-class CounterfactualHistoryItem(BaseModel):
-    partner_id: str
-    timestamp: str
-    synthesis: str
 
-@server.get("/counterfactual/history/{partner_id}", response_model=List[CounterfactualHistoryItem])
-async def get_counterfactual_history(partner_id: str) -> List[CounterfactualHistoryItem]:
-    """Return placeholder history items for a partner."""
-    dummy = [
-        CounterfactualHistoryItem(
-            partner_id=partner_id,
-            timestamp="2026-08-28T14:22:00Z",
-            synthesis="Previous synthesis for demo purposes."
-        ),
-        CounterfactualHistoryItem(
-            partner_id=partner_id,
-            timestamp="2026-08-30T09:10:00Z",
-            synthesis="Another past synthesis."
-        ),
-    ]
-    return dummy
+@server.post("/simulations", response_model=SavedSimulation, status_code=201)
+async def save_simulation(req: OpportunityRequest) -> SavedSimulation:
+    """Persist a completed simulation.
+
+    The financial figures are recomputed here from the partner's own history
+    using the same deterministic function that produced them, so nothing the
+    frontend sends is trusted as a financial result.
+    """
+    try:
+        if not partner_exists(req.partner_id):
+            raise HTTPException(status_code=404, detail=f"Partner {req.partner_id} not found.")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to validate partner: {exc}") from exc
+
+    projection, baseline = _projection_or_422(
+        req.partner_id, req.scenario_type, req.value, req.submission_id
+    )
+    # Record which evidence the figures came from, for the History view.
+    projection["scenario_inputs"]["source"] = baseline.get("source", "history")
+    if baseline.get("submission_id"):
+        projection["scenario_inputs"]["submission_id"] = baseline["submission_id"]
+
+    try:
+        saved = insert_simulation(projection)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to save simulation: {exc}") from exc
+    return SavedSimulation(**saved)
+
+
+@server.get("/simulations/{partner_id}", response_model=List[SavedSimulation])
+async def list_simulations(partner_id: str) -> List[SavedSimulation]:
+    """Return only this partner's saved simulations, newest first."""
+    try:
+        rows = fetch_simulations(partner_id)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to load simulations: {exc}") from exc
+    return [SavedSimulation(**row) for row in rows]
+
+
+# ---------- Telegram submissions (read-only for the website) ----------
+# The bot writes these rows; the website polls them so results and completion
+# notices appear here. The frozen WebSocket stream is untouched.
+import telegram_store
+
+
+@server.get("/telegram/submissions/{partner_id}")
+async def list_telegram_submissions(partner_id: str):
+    """Summaries of this partner's Telegram submissions, newest first."""
+    try:
+        return telegram_store.list_submissions(partner_id)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to load Telegram submissions: {exc}"
+        ) from exc
+
+
+@server.get("/telegram/submissions/{partner_id}/latest")
+async def latest_telegram_submission(partner_id: str):
+    """The newest completed Telegram audit for this partner, with its results.
+
+    ``ai_analysis`` is the merged output of the existing pipeline, in the same
+    shape the website already renders for uploads.
+    """
+    try:
+        latest = telegram_store.get_latest_complete(partner_id)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to load the Telegram audit: {exc}"
+        ) from exc
+    if latest is None:
+        return {"status": "none", "submission": None, "ai_analysis": None}
+
+    # Audits saved before the simulator wiring lack this; derive it from the
+    # stored per-platform results so they unlock "How to Earn More" too.
+    merged = latest.get("merged_result")
+    if merged and not merged.get("counterfactual_context"):
+        from telegram_audit import build_merged_counterfactual_context
+        merged["counterfactual_context"] = build_merged_counterfactual_context(
+            latest.get("results_by_platform") or {}, merged
+        )
+    if merged and merged.get("counterfactual_context") is not None:
+        # Lets "Earn More" simulate from this Telegram audit's own documents.
+        merged["counterfactual_context"]["submission_id"] = latest["submission_id"]
+    return {
+        "status": "Audit Complete",
+        "submission": {k: v for k, v in latest.items() if k not in ("merged_result", "results_by_platform")},
+        "ai_analysis": latest.get("merged_result"),
+        "results_by_platform": latest.get("results_by_platform"),
+    }
+
+
+class TelegramSeenRequest(BaseModel):
+    partner_id: str
+    submission_id: str
+
+
+@server.post("/telegram/submissions/seen")
+async def mark_telegram_submission_seen(req: TelegramSeenRequest):
+    """Acknowledge a completion notice so it is not shown again."""
+    try:
+        updated = telegram_store.mark_seen(req.submission_id, req.partner_id)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to update the submission: {exc}"
+        ) from exc
+    if not updated:
+        raise HTTPException(status_code=404, detail="Submission not found for this partner.")
+    return {"status": "ok"}
+
+# ---------- Partner History Audit endpoint (Milestone 2 CTA) ----------
+
+@server.get("/audit/history/{partner_id}")
+async def audit_partner_history(partner_id: str):
+    """
+    Query partner's 30-day history from Supabase and run full audit pipeline.
+    Used by the 'Discover how you can earn more' CTA.
+    """
+    try:
+        # Load data from Supabase
+        db_data = load_partner_history_from_db(partner_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load partner history: {e}")
+
+    # Run audit pipeline with DB-sourced data (no PDF/images needed)
+    ai_result = run_audit(
+        partner_id=db_data["partner_id"],
+        partner_profile=db_data["partner_profile"],
+        pdf_paths=[],
+        image_paths=[],
+        platform=db_data["platform"],
+        contract_versions=db_data["contract_versions"],
+        transactions=db_data["transactions"],
+        reconciliation_predictions=db_data.get("reconciliation_predictions", []),
+    )
+
+    serialized = serialize_audit_state(ai_result)
+    if serialized.get("status") == "error":
+        raise HTTPException(status_code=422, detail=serialized.get("error") or "Audit failed.")
+
+    # Partner metadata from the same 30-day load (no extra queries)
+    serialized["partner_metadata"] = {
+        "partner_id": db_data["partner_id"],
+        "name": db_data["partner_profile"].name,
+        "platforms": db_data.get("platforms", []),
+    }
+
+    return {
+        "status": "Audit Complete",
+        "ai_analysis": serialized,
+    }
+
 
 # ---------- Batch audit endpoint ----------
 from batch_audit import run_batch_audit
@@ -402,7 +675,7 @@ async def batch_audit_endpoint(specs: List[BatchPartnerSpec]):
 
 
 # ---------- Synthetic Data Batch endpoint ----------
-from synthetic_verification import run_full_verification, SyntheticDataset, load_synthetic_data
+from synthetic_verification import run_full_verification, load_synthetic_data
 
 class SyntheticDataUpload(BaseModel):
     """Raw synthetic dataset JSON files uploaded from frontend."""

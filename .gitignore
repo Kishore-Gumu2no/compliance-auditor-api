@@ -44,3 +44,7 @@ server.log
 
 # Backend experimental files
 Backend/Experimental_files/
+
+# Local Docker data (never commit database/storage volumes)
+supabase/volumes/
+supabase/storage/

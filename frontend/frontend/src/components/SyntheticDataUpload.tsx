@@ -1,5 +1,4 @@
 import { useState, useCallback } from 'react';
-import { formatCurrency } from '../services/demoData';
 
 interface SyntheticFileData {
   partners: File | null;
@@ -28,7 +27,7 @@ export function SyntheticDataUpload() {
   const [uploadResult, setUploadResult] = useState<SyntheticAuditResponse | null>(null);
   const [demoMode] = useState(typeof window !== 'undefined' && window.location.hostname !== 'localhost');
 
-  const handleFileSelect = useCallback((field: keyof SyntheticFileData, accept: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = useCallback((field: keyof SyntheticFileData) => (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       setSelectedFiles(prev => ({ ...prev, [field]: file }));
@@ -135,11 +134,11 @@ export function SyntheticDataUpload() {
   };
 
   const fileInputs = [
-    { key: 'partners', label: 'partners.json', desc: 'Partner profiles (20 records)', required: true },
-    { key: 'settlements', label: 'settlements.json', desc: 'Platform settlements (106 records)', required: true },
-    { key: 'earnings', label: 'earnings.json', desc: 'Earning records (102 records)', required: true },
-    { key: 'groundTruth', label: 'ground_truth.json', desc: 'Layer 1 ground truth (102 records)', required: true },
-    { key: 'groundTruthLayer2', label: 'ground_truth_layer2.json', desc: 'Layer 2 ground truth (8 findings)', required: false },
+    { key: 'partners', label: 'partners.json', required: true },
+    { key: 'settlements', label: 'settlements.json', required: true },
+    { key: 'earnings', label: 'earnings.json', required: true },
+    { key: 'groundTruth', label: 'ground_truth.json', required: true },
+    { key: 'groundTruthLayer2', label: 'ground_truth_layer2.json', required: false },
   ] as const;
 
   return (
@@ -147,31 +146,12 @@ export function SyntheticDataUpload() {
       <div className="upload-info">
         <span className="section-badge">SYNTHETIC</span>
         <h2 className="section-title-large">Submit your Synthetic Data</h2>
-        <p className="upload-description">
-          Upload the synthetic dataset files to run the full verification benchmark against ground truth.
-          This uses the same audit engine (Layer 1 → Layer 2 → Layer 3) but evaluates predictions against known results.
-        </p>
-
-        <div className="evidence-types">
-          <h3>Required Files</h3>
-          <ul>
-            {fileInputs.map(({ key, label, desc, required }) => (
-              <li key={key}>
-                <span className="evidence-icon">📊</span>
-                <div>
-                  <strong>{label}</strong> {required && <span className="required-badge">Required</span>}
-                  <span>{desc}</span>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
       </div>
 
       <div className="upload-area">
         <form onSubmit={handleUpload} className="upload-form">
           <div className="file-inputs synthetic-file-inputs">
-            {fileInputs.map(({ key, label, desc, required }) => (
+            {fileInputs.map(({ key, label, required }) => (
               <div key={key} className="file-input-group">
                 <label className="file-label">
                   <span className="file-icon">📄</span>
@@ -179,7 +159,7 @@ export function SyntheticDataUpload() {
                   <input
                     type="file"
                     accept=".json"
-                    onChange={handleFileSelect(key, '.json')}
+                    onChange={handleFileSelect(key)}
                     disabled={isUploading}
                   />
                 </label>

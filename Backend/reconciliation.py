@@ -39,7 +39,7 @@ def classify_single(settlement: Mapping[str, Any], earning: Mapping[str, Any], p
     if diff < -AMOUNT_TOLERANCE:
         if incentive_component > 0 and abs(diff - (-incentive_component)) <= AMOUNT_TOLERANCE:
             return AnomalyType.MISSING_INCENTIVE
-        if declared_deduction > 0 and -diff - declared_deduction > Decimal("50.00"):
+        if declared_deduction > 0 and -diff - declared_deduction > AMOUNT_TOLERANCE:
             return AnomalyType.INCORRECT_DEDUCTION
         return AnomalyType.PARTIAL_PAYMENT
     return AnomalyType.AMBIGUOUS_MATCH
