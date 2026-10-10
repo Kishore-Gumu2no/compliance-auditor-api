@@ -8,7 +8,7 @@ version: '3.8'
 #
 # Includes:
 #   • Backend (FastAPI) + Frontend (Vite/React, `dev` profile)
-#   • Local Supabase stack: PostgreSQL, Auth, REST, Realtime, Storage, Studio
+#   • Local PostgreSQL database (Supabase Postgres image)
 #   • Database data persists in the fairpay_pgdata volume; it is created
 #     and seeded automatically on first start
 #
@@ -17,7 +17,7 @@ version: '3.8'
 
 services:
   # ═══════════════════════════════════════════════════════════════
-  # LOCAL SUPABASE STACK (6 services)
+  # DATABASE
   # ═══════════════════════════════════════════════════════════════
 
   # PostgreSQL Database — local only, data in the fairpay_pgdata volume
@@ -46,110 +46,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    networks:
-      - fairpay-network
-
-  # Supabase API (PostgREST) — Auto REST on local Postgres
-  rest:
-    image: postgrest/postgrest:v12.2.3
-    container_name: fairpay_rest
-    environment:
-      PGRST_DB_URI: postgres://postgres:postgres@db:5432/postgres
-      PGRST_DB_SCHEMA: public
-      PGRST_DB_ANON_ROLE: anon
-      PGRST_JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
-    ports:
-      - "54321:3000"
-    depends_on:
-      db:
-        condition: service_healthy
-    networks:
-      - fairpay-network
-
-  # Supabase Auth (GoTrue) — Local JWT auth
-  auth:
-    image: supabase/gotrue:v2.173.0
-    container_name: fairpay_auth
-    environment:
-      GOTRUE_DB_DRIVER: postgres
-      GOTRUE_DB_DATABASE_URL: postgres://postgres:postgres@db:5432/postgres
-      GOTRUE_SITE_URL: http://localhost:3000
-      GOTRUE_URI_ALLOW_LIST: "*"
-      GOTRUE_JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
-      GOTRUE_JWT_EXP: 3600
-      GOTRUE_EXTERNAL_URL: http://localhost:54321
-      GOTRUE_DISABLE_SIGNUP: "false"
-    ports:
-      - "54326:9999"
-    depends_on:
-      db:
-        condition: service_healthy
-    networks:
-      - fairpay-network
-
-  # Supabase Studio — Local web UI at http://localhost:54323
-  studio:
-    image: supabase/studio:latest
-    container_name: fairpay_studio
-    environment:
-      STUDIO_DEFAULT_ORGANIZATION: supabase
-      STUDIO_DEFAULT_PROJECT: compliance-auditor
-      SUPABASE_URL: http://rest:3000
-      SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNvbXBsaWFuY2UtYXVkaXRvciIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzM0NTY3MjAwLCJleHAiOjIwNTAxNDMyMDB9.RUTBxvLXcucyr3uc_8kwulN1lswinEB65uf2b9k49_w
-    ports:
-      - "54323:3000"
-    depends_on:
-      - rest
-    networks:
-      - fairpay-network
-
-  # Supabase Realtime — Local WebSocket subscriptions
-  realtime:
-    image: supabase/realtime:v2.32.10
-    container_name: fairpay_realtime
-    environment:
-      PORT: 4000
-      DB_HOST: db
-      DB_PORT: 5432
-      DB_USER: postgres
-      DB_PASSWORD: postgres
-      DB_NAME: postgres
-      DB_AFTER_CONNECT_QUERY: "SET search_path TO _realtime"
-      SECRET_KEY_BASE: super-secret-key-base-for-realtime-service
-      ERL_AFLAGS: "-proto_dist inet_tcp"
-    ports:
-      - "54324:4000"
-    depends_on:
-      db:
-        condition: service_healthy
-    networks:
-      - fairpay-network
-
-  # Supabase Storage — Local file storage in ./supabase/storage
-  storage:
-    image: supabase/storage-api:v1.18.0
-    container_name: fairpay_storage
-    environment:
-      ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNvbXBsaWFuY2UtYXVkaXRvciIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzM0NTY3MjAwLCJleHAiOjIwNTAxNDMyMDB9.RUTBxvLXcucyr3uc_8kwulN1lswinEB65uf2b9k49_w
-      SERVICE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNvbXBsaWFuY2UtYXVkaXRvciIsInJvbGUiOiJzZXJ2aWNlX3JvbGUiLCJpYXQiOjE3MzQ1NjcyMDAsImV4cCI6MjA1MDE0MzIwMH0.AdL3r5N5LQ8xK8xK8xK8xK8xK8xK8xK8xK8xK8xK8x
-      POSTGREST_URL: http://rest:3000
-      PGRST_JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
-      DATABASE_URL: postgres://postgres:postgres@db:5432/postgres
-      FILE_SIZE_LIMIT: 52428800
-      STORAGE_BACKEND: file
-      FILE_STORAGE_PATH: /var/lib/storage
-      TENANT_ID: compliance-auditor
-      REGION: local
-      GLOBAL_S3_BUCKET: ""
-    ports:
-      - "54325:5000"
-    volumes:
-      - ./supabase/storage:/var/lib/storage
-    depends_on:
-      db:
-        condition: service_healthy
-      rest:
-        condition: service_started
     networks:
       - fairpay-network
 
@@ -183,7 +79,9 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=postgres
       - SUPABASE_URL=http://rest:3000
-      - SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNvbXBsaWFuY2UtYXVkaXRvciIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzM0NTY3MjAwLCJleHAiOjIwNTAxNDMyMDB9.RUTBxvLXcucyr3uc_8kwulN1lswinEB65uf2b9k49_w
+      # SUPABASE_KEY is deliberately not set here. It is a key, and this file is
+      # committed; it arrives from .env / Backend/.env through `env_file` above
+      # (copy .env.example to .env if you have not already).
       - TESSERACT_PATH=/usr/bin/tesseract
     volumes:
       - ./Backend/real_laws.json:/app/real_laws.json:ro
@@ -198,8 +96,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      rest:
-        condition: service_started
     networks:
       - fairpay-network
 

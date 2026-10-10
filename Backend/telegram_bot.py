@@ -5,16 +5,17 @@ collects documents and hands them to the existing audit engine through
 ``telegram_audit.run_submission_audit``; it never calculates anything itself,
 and detailed findings stay on the website.
 
-Conversation model
-------------------
-1. ``/link <partner_id>`` ties this chat to a delivery partner.
-2. Photos and PDFs are collected into the currently announced platform.
-3. Any other plain text announces a platform - every document sent after it
-   belongs to that platform.
-4. ``PLEASE AUDIT`` runs the existing pipeline over everything collected.
+Conversation model (shown to the partner as GUIDE_TEXT)
+--------------------------------------------------------
+1. ``/start`` introduces the two options; the partner chooses one:
+   Option 1 - "Didn't get your incentive?" (the incentive check, from a
+   single day's entire trip history), or Option 2 - "Full Audit".
+2. ``/link <partner_id>`` ties this chat to a delivery partner.
+3. After sending one app's photos or PDFs, the partner picks the app
+   (Zomato, Swiggy, Uber Eats, Blinkit, Other).
+4. ``PLEASE AUDIT`` hands everything to ``telegram_audit.run_submission_audit``.
 
-A persistent keyboard keeps ``PLEASE AUDIT`` suggested whenever the partner
-goes to type.
+Messages use plain, everyday words for people with no technical background.
 
 Run standalone (it does not touch the FastAPI app or the WebSocket stream):
 
@@ -34,7 +35,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from telegram_audit import MISSING_MARKER, run_submission_audit, summarize_for_partner
+from evidence_modes import FULL_AUDIT
+from telegram_audit import INCENTIVE_AUDIT, IncompleteReading, run_submission_audit, summarize_for_partner
 from telegram_store import (
     complete_submission,
     create_submission,
@@ -42,14 +44,18 @@ from telegram_store import (
     get_linked_partner,
     link_chat,
     partner_exists,
+    purge_submission_details,
+    unlink_chat,
 )
 
 logger = logging.getLogger("fairpay.telegram")
 
 API_ROOT = "https://api.telegram.org"
 AUDIT_COMMAND = "PLEASE AUDIT"
+# Shown on keyboards sent before this button was renamed; still accepted.
+_OLD_DONE_BUTTON = "✅ Check my files"
 
-# Mirrors the per-audit limits the website upload endpoint enforces.
+# Mirrors the per-submission limits used across FairPay.
 MAX_IMAGES_PER_PLATFORM = 20
 MAX_PDFS_PER_PLATFORM = 5
 MAX_SESSION_BYTES = 50 * 1024 * 1024
@@ -61,8 +67,79 @@ KEYBOARD = {
     "keyboard": [[{"text": AUDIT_COMMAND}]],
     "resize_keyboard": True,
     "is_persistent": True,
-    "input_field_placeholder": f"Type a platform name, or tap {AUDIT_COMMAND}",
+    "input_field_placeholder": "Send your files here",
 }
+
+# The two options introduced after /start. Exactly one must be chosen.
+OPTION_1_TEXT = ("Option 1: Didn't get your incentive? I can check why, just send me your single day's "
+                 "entire trip history, WITHOUT MISSING A SINGLE TRIP")
+OPTION_2_TEXT = "Option 2: Full Audit"
+OPTION_1_BUTTON = "Option 1: Didn't get your incentive?"
+OPTION_2_BUTTON = "Option 2: Full Audit"
+OPTION_NAMES = {INCENTIVE_AUDIT: "Option 1 (the incentive check)", FULL_AUDIT: "Option 2 (Full Audit)"}
+OPTION_KEYBOARD = {
+    "keyboard": [[{"text": OPTION_1_BUTTON}], [{"text": OPTION_2_BUTTON}]],
+    "resize_keyboard": True,
+    "one_time_keyboard": True,
+    "input_field_placeholder": "Choose Option 1 or Option 2",
+}
+CHOOSE_OPTION = f"Please choose one option:\n\n{OPTION_1_TEXT}\n\n{OPTION_2_TEXT}"
+START_TEXT = f"Welcome to FairPay.\n\n{CHOOSE_OPTION}"
+# A one-line reminder with the option buttons.
+CHOOSE_OPTION_SHORT = "Please choose Option 1 or Option 2 first."
+
+OTHER_APP = "Other"
+APP_KEYBOARD = {
+    "keyboard": [
+        [{"text": "Zomato"}, {"text": "Swiggy"}],
+        [{"text": "Uber Eats"}, {"text": "Blinkit"}],
+        [{"text": OTHER_APP}],
+    ],
+    "resize_keyboard": True,
+    "one_time_keyboard": True,
+    "input_field_placeholder": "Which app?",
+}
+
+# The how-to, shown on /start and as the bot's description - the text Telegram
+# shows before the partner presses Start. Telegram allows 512 characters there.
+GUIDE_TEXT = (
+    "Didn't get an incentive? FairPay can check why.\n\n"
+    "How to use the FairPay bot:\n"
+    "1. Send /start and choose Option 1 (Didn't get your incentive? Send one whole day of trips, "
+    "every single one) or Option 2 (Full Audit).\n"
+    "2. Link your data with /link and your ID (example: /link bobby)\n"
+    "3. Send one app's screenshots or PDFs, then say which app they are from.\n"
+    f"4. When you are done, tap {AUDIT_COMMAND}.\n"
+    "Your results appear on the FairPay website.\n\n"
+    # Telegram allows 512 characters here, so this stays short.
+    "FairPay keeps your ID to show your results. Send /unlink to be forgotten."
+)
+SHORT_DESCRIPTION = "Send your delivery earnings files. FairPay checks your pay and shows the results on its website."
+BOT_COMMANDS = [
+    {"command": "start", "description": "See how to use the bot"},
+    {"command": "link", "description": "Link to your data, e.g. /link bobby"},
+    {"command": "status", "description": "See the files you sent"},
+    {"command": "clear", "description": "Remove the files you sent"},
+    {"command": "unlink", "description": "Forget this chat and my past results"},
+]
+
+LINK_PROMPT = "Now link to your data. Send /link and your ID, like this:\n/link bobby"
+WHICH_APP = "Which app are these records from?"
+
+
+def is_done(text: str) -> bool:
+    return text.strip().upper() in (AUDIT_COMMAND, _OLD_DONE_BUTTON.upper(), "DONE")
+
+
+def parse_option(text: str) -> Optional[str]:
+    """The option a reply picks (1 or 2), or None if it is not an option choice."""
+    cleaned = " ".join(text.strip().lower().replace(":", " ").rstrip("?").split())
+    if cleaned in ("1", "option 1", " ".join(OPTION_1_BUTTON.lower().replace(":", " ").rstrip("?").split()),
+                   "didn't get your incentive", "didn't get my incentive", "incentive"):
+        return INCENTIVE_AUDIT
+    if cleaned in ("2", "option 2", "full audit", " ".join(OPTION_2_BUTTON.lower().replace(":", " ").split())):
+        return FULL_AUDIT
+    return None
 
 
 @dataclass
@@ -79,6 +156,10 @@ class Session:
     batches: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
     total_bytes: int = 0
     auditing: bool = False
+    # Set after the partner taps "Other": their next message is the app's name.
+    awaiting_app_name: bool = False
+    # Option A or B (step 3); None until the partner chooses.
+    option: Optional[str] = None
 
     def add(self, kind: str, content: bytes) -> None:
         self.pending.append({"kind": kind, "content": content})
@@ -160,9 +241,9 @@ class TelegramClient:
             raise RuntimeError(f"Telegram getUpdates failed: {body}")
         return body.get("result", [])
 
-    async def send(self, chat_id: int, text: str) -> None:
+    async def send(self, chat_id: int, text: str, keyboard: Optional[Dict[str, Any]] = None) -> None:
         await self.call(
-            "sendMessage", chat_id=chat_id, text=text, reply_markup=KEYBOARD
+            "sendMessage", chat_id=chat_id, text=text, reply_markup=keyboard or KEYBOARD
         )
 
     async def download(self, file_id: str) -> bytes:
@@ -179,24 +260,11 @@ class TelegramClient:
 # Message handling
 # ---------------------------------------------------------------------------
 
-HELP_TEXT = (
-    "FairPay evidence bot\n\n"
-    "1. Send one platform's earnings screenshots or PDF statements.\n"
-    "2. Then type that platform's name (for example: Zomato). This labels the "
-    "documents you just sent.\n"
-    "3. Send the next platform's documents and type its name, and so on.\n"
-    f"4. When everything is sent, tap or type {AUDIT_COMMAND}.\n\n"
-    "Example: send 10 images and 2 PDFs, type Zepto, then send your Zomato "
-    f"documents, type Zomato, then tap {AUDIT_COMMAND}.\n\n"
-    "Your full results open on the FairPay website."
-)
-
-
 async def handle_document(bot: TelegramClient, chat_id: int, message: Dict[str, Any]) -> None:
-    """Collect a photo or PDF into the current platform batch."""
+    """Collect a photo or PDF until the partner says which app it is from."""
     session = _session(chat_id)
     if not session.partner_id:
-        await bot.send(chat_id, "Please link your account first:\n/link <your partner id>")
+        await bot.send(chat_id, LINK_PROMPT)
         return
 
     kind: Optional[str] = None
@@ -214,25 +282,21 @@ async def handle_document(bot: TelegramClient, chat_id: int, message: Dict[str, 
         elif mime.startswith("image/"):
             kind, file_id = "image", document["file_id"]
         else:
-            await bot.send(chat_id, "Please send images or PDF files only.")
+            await bot.send(chat_id, "Please send pictures or PDF files.")
             return
 
     if not kind or not file_id:
         return
 
     counts = session.pending_counts()
-    if kind == "image" and counts["images"] >= MAX_IMAGES_PER_PLATFORM:
+    if (kind == "image" and counts["images"] >= MAX_IMAGES_PER_PLATFORM) or (
+        kind == "pdf" and counts["pdfs"] >= MAX_PDFS_PER_PLATFORM
+    ):
         await bot.send(
             chat_id,
-            f"That is {MAX_IMAGES_PER_PLATFORM} images in this batch, which is the "
-            "limit. Type the platform name for them, then carry on.",
-        )
-        return
-    if kind == "pdf" and counts["pdfs"] >= MAX_PDFS_PER_PLATFORM:
-        await bot.send(
-            chat_id,
-            f"That is {MAX_PDFS_PER_PLATFORM} PDFs in this batch, which is the "
-            "limit. Type the platform name for them, then carry on.",
+            "That is a lot of files at once. Please tell me which app they are from first, "
+            "then send the rest.\n\n" + WHICH_APP,
+            APP_KEYBOARD,
         )
         return
 
@@ -240,14 +304,13 @@ async def handle_document(bot: TelegramClient, chat_id: int, message: Dict[str, 
         content = await bot.download(file_id)
     except Exception:
         logger.exception("Download failed for chat %s", chat_id)
-        await bot.send(chat_id, "That file could not be downloaded. Please send it again.")
+        await bot.send(chat_id, "I could not get that file. Please send it again.")
         return
 
     if session.total_bytes + len(content) > MAX_SESSION_BYTES:
         await bot.send(
             chat_id,
-            f"That is more than this submission can hold. Please send "
-            f"{AUDIT_COMMAND} for what you have already sent.",
+            f"That is too much for one check. Tap {AUDIT_COMMAND} to check what you already sent.",
         )
         return
 
@@ -258,12 +321,12 @@ async def handle_document(bot: TelegramClient, chat_id: int, message: Dict[str, 
         chat_id, kind, len(session.pending), session.document_count(),
     )
     if first_of_batch:
-        # Nudge once per batch rather than on every file in a 10-image drop.
-        await bot.send(
-            chat_id,
-            "Received. Send the rest for this platform, then type the platform "
-            "name (for example: Zomato) to label them.",
-        )
+        # Ask once per batch rather than on every file in a 10-image drop.
+        session.awaiting_app_name = False
+        if session.option is None:
+            await bot.send(chat_id, "Got it! " + CHOOSE_OPTION_SHORT, OPTION_KEYBOARD)
+        else:
+            await bot.send(chat_id, f"Got it! {WHICH_APP}", APP_KEYBOARD)
 
 
 async def handle_text(bot: TelegramClient, chat_id: int, text: str) -> None:
@@ -274,31 +337,70 @@ async def handle_text(bot: TelegramClient, chat_id: int, text: str) -> None:
         await handle_command(bot, chat_id, stripped)
         return
 
-    if stripped.upper() == AUDIT_COMMAND:
+    if is_done(stripped):
         await start_audit(bot, chat_id)
         return
 
+    option = parse_option(stripped)
+    if option is not None:
+        await choose_option(bot, chat_id, option)
+        return
+
     if not session.partner_id:
-        await bot.send(chat_id, "Please link your account first:\n/link <your partner id>")
+        await bot.send(chat_id, LINK_PROMPT)
         return
 
-    # Any other text names the platform for the documents just sent.
+    if not session.pending:
+        await bot.send(chat_id, "Please send your files first. Then tell me which app they are from.")
+        return
+
+    if stripped.lower() == OTHER_APP.lower() and not session.awaiting_app_name:
+        session.awaiting_app_name = True
+        await bot.send(chat_id, "Please type the name of the app.")
+        return
+
+    # The answer to "Which app are these records from?" labels the files.
+    session.awaiting_app_name = False
     moved = session.announce(stripped)
-    if moved == 0:
-        await bot.send(
-            chat_id,
-            f"No new documents to label as {stripped} yet.\n"
-            f"Send that platform's images or PDFs first, then type {stripped} again.",
-        )
-        return
-
-    counts = session.counts(stripped)
+    total = sum(session.counts(stripped).values())
     await bot.send(
         chat_id,
-        f"Labelled {moved} document(s) as {stripped}.\n"
-        f"{stripped} now has {counts['images']} image(s) and {counts['pdfs']} PDF(s).\n\n"
-        f"Send another platform's documents next, or tap {AUDIT_COMMAND} if you are done.",
+        f"Thank you! I have {total} file{'s' if total != 1 else ''} from {stripped}.\n"
+        f"You can send another app's files now. When you are done, tap {AUDIT_COMMAND}.",
     )
+    logger.info("chat=%s labelled %d file(s) as %s", chat_id, moved, stripped)
+
+
+async def choose_option(bot: TelegramClient, chat_id: int, option: str) -> None:
+    session = _session(chat_id)
+    session.option = option
+    if option == INCENTIVE_AUDIT:
+        intro = ("You chose Option 1. I will check why you did not get your incentive.\n"
+                 "Send me your single day's entire trip history, WITHOUT MISSING A SINGLE TRIP. "
+                 "Then I will ask which app it is from.")
+    else:
+        intro = ("You chose Option 2: Full Audit.\n"
+                 "Send one app's screenshots or PDFs. Then I will ask which app they are from.")
+    if not session.partner_id:
+        await bot.send(chat_id, f"{intro}\n\n{LINK_PROMPT}")
+        return
+    if session.pending:
+        await bot.send(chat_id, f"{intro.splitlines()[0]}\n{WHICH_APP}", APP_KEYBOARD)
+        return
+    await bot.send(chat_id, intro)
+
+
+async def send_next_step(bot: TelegramClient, chat_id: int) -> None:
+    """After /link: ask for the option, or for the files of the option already chosen."""
+    session = _session(chat_id)
+    if not session.partner_id:
+        await bot.send(chat_id, LINK_PROMPT)
+    elif session.option is None:
+        await bot.send(chat_id, CHOOSE_OPTION, OPTION_KEYBOARD)
+    elif session.option == INCENTIVE_AUDIT:
+        await bot.send(chat_id, "Now send me your single day's entire trip history, WITHOUT MISSING A SINGLE TRIP.")
+    else:
+        await bot.send(chat_id, "Now send one app's screenshots or PDFs for the Full Audit.")
 
 
 async def handle_command(bot: TelegramClient, chat_id: int, text: str) -> None:
@@ -307,79 +409,96 @@ async def handle_command(bot: TelegramClient, chat_id: int, text: str) -> None:
     argument = parts[1].strip() if len(parts) > 1 else ""
     session = _session(chat_id)
 
-    if command in ("/start", "/help"):
-        await bot.send(chat_id, HELP_TEXT)
-        if not session.partner_id:
-            await bot.send(chat_id, "To begin, send:\n/link <your partner id>")
-        return
-
     if command == "/link":
         if not argument:
-            await bot.send(chat_id, "Send it like this:\n/link <your partner id>")
+            await bot.send(chat_id, LINK_PROMPT)
             return
         try:
             if not partner_exists(argument):
-                await bot.send(chat_id, f"No partner found with the id '{argument}'.")
+                await bot.send(chat_id, f"I could not find the ID '{argument}'. Please check it and try again.")
                 return
             link_chat(chat_id, argument)
         except Exception:
             logger.exception("Linking failed for chat %s", chat_id)
-            await bot.send(chat_id, "That could not be saved right now. Please try again.")
+            await bot.send(chat_id, "Something went wrong. Please try again in a moment.")
             return
         session.partner_id = argument
-        await bot.send(chat_id, f"Linked to {argument}.\n\n{HELP_TEXT}")
+        await bot.send(chat_id, f"Thank you! You are linked to {argument}.")
+        await send_next_step(bot, chat_id)
         return
 
     if command == "/status":
         if not session.partner_id:
-            await bot.send(chat_id, "Not linked yet. Send /link <your partner id>")
+            await bot.send(chat_id, LINK_PROMPT)
             return
+        chosen = OPTION_NAMES[session.option] if session.option else "not chosen yet"
         if not session.batches and not session.pending:
-            await bot.send(chat_id, "No documents collected yet.")
+            await bot.send(chat_id, f"Option: {chosen}\nYou have not sent any files yet.")
             return
-        lines = ["Collected so far:"]
+        lines = [f"Option: {chosen}", "Files you sent:"]
         for platform in session.batches:
-            counts = session.counts(platform)
-            lines.append(f"• {platform}: {counts['images']} images, {counts['pdfs']} PDFs")
+            lines.append(f"• {platform}: {sum(session.counts(platform).values())}")
         if session.pending:
-            pending = session.pending_counts()
-            lines.append(
-                f"• Not labelled yet: {pending['images']} images, {pending['pdfs']} PDFs"
-            )
-            lines.append("  Type the platform name for these.")
-        lines.append(f"\nSend {AUDIT_COMMAND} when you are ready.")
+            lines.append(f"• Not sure which app yet: {len(session.pending)}")
+        lines.append(f"\nWhen you are done, tap {AUDIT_COMMAND}.")
         await bot.send(chat_id, "\n".join(lines))
         return
 
     if command in ("/clear", "/reset"):
         session.reset_documents()
-        await bot.send(chat_id, "Cleared. Send your documents again when you are ready.")
+        session.awaiting_app_name = False
+        await bot.send(chat_id, "Done. I removed the files you sent. You can send new files now.")
         return
 
-    await bot.send(chat_id, HELP_TEXT)
+    if command == "/unlink":
+        session.reset_documents()
+        session.awaiting_app_name = False
+        session.partner_id = None
+        session.option = None
+        try:
+            removed = await asyncio.to_thread(unlink_chat, chat_id)
+        except Exception:
+            logger.exception("Unlinking failed for chat %s", chat_id)
+            await bot.send(chat_id, "Something went wrong. Please try again in a moment.")
+            return
+        results = removed["submissions"]
+        await bot.send(
+            chat_id,
+            "Done. I have forgotten this chat.\n"
+            f"I removed the link to your ID and {results} past {'result' if results == 1 else 'results'}.\n"
+            "Your results will no longer show on the website. Use /link with your ID to start again.",
+        )
+        return
+
+    # /start, /help and anything else: introduce the two options.
+    session.option = None
+    await bot.send(chat_id, START_TEXT, OPTION_KEYBOARD)
 
 
 async def start_audit(bot: TelegramClient, chat_id: int) -> None:
-    """Hand everything collected to the existing audit pipeline."""
+    """Hand everything collected to the backend with the chosen option."""
     session = _session(chat_id)
 
     if not session.partner_id:
-        await bot.send(chat_id, "Please link your account first:\n/link <your partner id>")
+        await bot.send(chat_id, LINK_PROMPT)
         return
     if session.auditing:
-        await bot.send(chat_id, "Your audit is already running. Please wait.")
+        await bot.send(chat_id, "I am still checking your files. Please wait.")
+        return
+    if session.option is None:
+        await bot.send(chat_id, CHOOSE_OPTION_SHORT, OPTION_KEYBOARD)
         return
     if session.document_count() == 0:
-        await bot.send(chat_id, "Send at least one image or PDF before asking for an audit.")
+        await bot.send(chat_id, "Please send at least one file first.")
         return
 
     if session.pending:
-        counts = session.pending_counts()
+        count = len(session.pending)
         await bot.send(
             chat_id,
-            f"{counts['images']} image(s) and {counts['pdfs']} PDF(s) are not "
-            "labelled yet.\nWhich platform are they from? Type the platform name, "
-            f"then tap {AUDIT_COMMAND} again.",
+            f"I don't know which app {'this file is' if count == 1 else f'these {count} files are'} "
+            f"from yet.\n{WHICH_APP}",
+            APP_KEYBOARD,
         )
         return
 
@@ -393,14 +512,21 @@ async def start_audit(bot: TelegramClient, chat_id: int) -> None:
         submission_id = create_submission(
             session.partner_id, chat_id, platforms, document_counts
         )
-        await bot.send(
-            chat_id,
-            "Got it. Checking your documents now — this can take a few minutes.\n"
-            f"Platforms: {', '.join(platforms)}",
-        )
+        await bot.send(chat_id, "Thank you! I am checking your files now. This can take a few minutes.")
 
-        # The pipeline is synchronous, so keep it off the event loop.
-        outcome = await asyncio.to_thread(run_submission_audit, session.partner_id, batches)
+        # The pipeline is synchronous, so keep it off the event loop. The
+        # chosen option decides the check; files with only totals are still
+        # compared as totals.
+        # The reading runs in a worker thread; if it has to switch to the slower
+        # reader, this sends the partner the notice from there.
+        loop = asyncio.get_running_loop()
+
+        def notify(text: str) -> None:
+            asyncio.run_coroutine_threadsafe(bot.send(chat_id, text), loop)
+
+        outcome = await asyncio.to_thread(
+            run_submission_audit, session.partner_id, batches, session.option, notify
+        )
 
         complete_submission(
             submission_id,
@@ -409,8 +535,24 @@ async def start_audit(bot: TelegramClient, chat_id: int) -> None:
             outcome["missing_fields"],
         )
         await bot.send(chat_id, summarize_for_partner(outcome["merged_result"]))
-        await bot.send(chat_id, f"Full findings: {WEBSITE_URL}")
+        await bot.send(chat_id, f"See your results here: {WEBSITE_URL}")
+        # The partner has now been shown the result, so the trip-level details
+        # behind it are deleted; only the outcome is kept (see telegram_store).
+        try:
+            await asyncio.to_thread(purge_submission_details, submission_id, session.partner_id)
+        except Exception:
+            logger.exception("Could not delete the trip details for %s", submission_id)
         session.reset_documents()
+    except IncompleteReading as exc:
+        # Not every document was read in full, so no answer was given.
+        if submission_id:
+            try:
+                fail_submission(submission_id, "Documents not read in full; partner asked to send them again.")
+            except Exception:
+                logger.exception("Could not record the failure for %s", submission_id)
+        if not exc.keep_documents:
+            session.reset_documents()
+        await bot.send(chat_id, exc.rider_message)
     except Exception as exc:
         logger.exception("Audit failed for chat %s", chat_id)
         if submission_id:
@@ -420,8 +562,8 @@ async def start_audit(bot: TelegramClient, chat_id: int) -> None:
                 logger.exception("Could not record the failure for %s", submission_id)
         await bot.send(
             chat_id,
-            "Your documents could not be audited. Nothing has been changed.\n"
-            "Please check that the images are readable and try again.",
+            "Sorry, I could not check your files. Nothing was changed.\n"
+            "Please make sure the pictures are clear and try again.",
         )
     finally:
         session.auditing = False
@@ -448,6 +590,20 @@ async def handle_update(bot: TelegramClient, update: Dict[str, Any]) -> None:
 # Long-polling entry point
 # ---------------------------------------------------------------------------
 
+async def publish_profile(bot: TelegramClient) -> None:
+    """Show the steps before the partner presses Start (bot description),
+    plus the short profile text and the command menu. Best-effort."""
+    for method, payload in (
+        ("setMyDescription", {"description": GUIDE_TEXT}),
+        ("setMyShortDescription", {"short_description": SHORT_DESCRIPTION}),
+        ("setMyCommands", {"commands": BOT_COMMANDS}),
+    ):
+        try:
+            await bot.call(method, **payload)
+        except Exception:
+            logger.exception("Could not set the bot profile (%s)", method)
+
+
 async def run_bot() -> None:
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     if not token:
@@ -459,6 +615,7 @@ async def run_bot() -> None:
         bot = TelegramClient(token, client)
         me = await bot.call("getMe")
         logger.info("FairPay bot connected as @%s", me.get("username"))
+        await publish_profile(bot)
 
         offset = 0
         while True:

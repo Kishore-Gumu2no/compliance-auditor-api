@@ -81,6 +81,11 @@ class LegalBasis(BaseModel):
     status: str = Field(default="in_force", description="Law status")
     version: str = Field(default="original", description="Law version")
     parent_act: str = Field(default="", description="Parent act identifier")
+    effective_to: Optional[date] = Field(default=None, description="Last day this version was in force; None if still in force")
+    # From the law's document in Qdrant (law_store): which problems it can flag
+    # ({"concept", "keywords"}) and the figures it sets (e.g. minimum_wage_hourly).
+    concepts: List[Dict[str, Any]] = Field(default_factory=list, description="Concepts this provision can flag, with the words that show them")
+    parameters: Dict[str, Any] = Field(default_factory=dict, description="Figures this provision sets")
 
 class ContractVersion(BaseModel):
     #region Why should this class exist?
@@ -215,10 +220,10 @@ class EconomicConcernFinding(BaseModel):
     business_hourly_rate: Decimal = Field(ge=0,description="Links to BusinessCostCalculation")
     contracted_hourly_benchmark: Decimal = Field(ge=0,description="How much the contract is paying per hour")
     market_hourly_benchmark: Decimal = Field(ge=0, description="Average hourly benchmark in the city.")
-    min_wage_hourly_benchmark: Decimal = Field(ge=0, description="Legal minimum wage")
+    min_wage_hourly_benchmark: Optional[Decimal] = Field(default=None, ge=0, description="Minimum wage from the law in force for this trip; None if no law sets one")
     gap_vs_contracted_pct: Decimal = Field(ge=0, description="Percentage below contract rate.")
     gap_vs_market_pct: Decimal = Field(ge=0, description="Percentage below market rate.")
-    gap_vs_min_wage_pct: Decimal = Field(ge=0, description="Percentage below minimum wage.")
+    gap_vs_min_wage_pct: Optional[Decimal] = Field(default=None, ge=0, description="Percentage below minimum wage; None if no law sets one.")
     severity: Literal["low","medium","high","critical"] = Field(description="Based on gaps")
     notes: str = Field(description="Explanation in Human Readbale form")
     category: Literal["economic"] = Field(default="economic", description="Finding category for evaluation matching")
@@ -251,7 +256,7 @@ class FairPayState(BaseModel):
     pdf_paths: List[str] = Field(default_factory=list, description="List of PDF files to ingest")
     image_paths: List[str] = Field(default_factory=list, description="List of image files to ingest")
     platform: str = Field(default="", description="The target platform for the audit")
-    use_local_laws: bool = Field(default=True, description="Whether to resolve laws locally instead of calling vector DB")
+    use_local_laws: bool = Field(default=True, description="Read laws from an in-memory Qdrant seeded from real_laws.json (tests, synthetic verification) instead of the Qdrant cluster")
     transactions: List[TransactionRecord] = Field(default_factory=list, description="All reconstructed transactions")
     contract_versions: List[ContractVersion] = Field(default_factory=list, description="Applicable contract versions")
     applicable_laws: List[LegalBasis] = Field(default_factory=list, description="Law matched per transaction")
@@ -262,9 +267,10 @@ class FairPayState(BaseModel):
     audit_findings: Optional[AuditFindings] = Field(default = None, description="Aggregated findings container")
     evidence_gaps: List[str] = Field(default_factory=list, description="Missing data flags")
     classification_probability: Decimal = Field(ge=0,le=1,description="Probability of being legally classified as an employee (vs contractor)")
-    counterfactual_scenarios: Optional[List[Dict]] = Field(default=None, description="For debate system(Phase 2)")
     reconciliation_predictions: List[Dict[str, Any]] = Field(default_factory=list, description="Shared reconciliation outputs")
     work_time: List[Dict[str, Any]] = Field(default_factory=list, description="Working time read from documents: {date, start, end, minutes}")
+    evidence_summaries: List[Dict[str, Any]] = Field(default_factory=list, description="Printed totals and bank credits read from documents (not order-level)")
+    order_observations: List[Dict[str, Any]] = Field(default_factory=list, description="Printed per-order facts (incl. order time) for the extracted earning records")
 
     # Layer 3: Controller outputs
     controller_decisions: List[ControllerDecision] = Field(default_factory=list, description="Per-transaction operational decisions")

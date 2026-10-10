@@ -201,6 +201,157 @@ def load_partner_profile(partner_id: str) -> PartnerProfile:
     )
 
 
+# Contract builders shared by the 30-day history loader and the evidence-mode
+# layer (contract terms on file for a platform).
+
+def _populate_contract_params(cv: ContractVersion, rules: list[dict]):
+    """Populate structured contract parameters from platform_rules."""
+    for rule in rules:
+        rule_type = rule.get("rule_type")
+        params = rule.get("parameters", {})
+        if rule_type == "BASE_PAY":
+            cv.base_pay_per_order = Decimal(str(params.get("amount", 0)))
+        elif rule_type == "DISTANCE":
+            cv.distance_rate_per_km = Decimal(str(params.get("rate_per_km", 0)))
+        elif rule_type == "WAIT":
+            cv.wait_free_minutes = params.get("free_minutes", 0)
+            cv.wait_rate_per_min = Decimal(str(params.get("rate_per_min", 0)))
+            cv.wait_max_billable_minutes = params.get("max_billable_minutes", 0)
+        elif rule_type == "INCENTIVE_PEAK":
+            cv.peak_amount = Decimal(str(params.get("amount", 0)))
+            cv.peak_windows = params.get("windows", [])
+        elif rule_type == "INCENTIVE_WEEKEND":
+            cv.weekend_amount = Decimal(str(params.get("amount", 0)))
+            cv.weekend_days = params.get("days", [])
+        elif rule_type == "BONUS_DAILY_TARGET":
+            cv.daily_threshold = params.get("threshold_orders", 0)
+            cv.daily_bonus = Decimal(str(params.get("amount", 0)))
+        elif rule_type == "BONUS_WEEKLY_TARGET":
+            cv.weekly_threshold = params.get("threshold_orders", 0)
+            cv.weekly_bonus = Decimal(str(params.get("amount", 0)))
+        elif rule_type == "DEDUCTION_FEE":
+            calc = params.get("calc", "")
+            if calc == "PERCENT_OF_BASE_DISTANCE_WAIT":
+                cv.platform_fee_rate = Decimal(str(params.get("rate", 0)))
+                cv.platform_fee_name = params.get("name", "Platform Service Fee")
+            elif calc == "FLAT_PER_ORDER":
+                cv.insurance_amount = Decimal(str(params.get("amount", 0)))
+                cv.insurance_name = params.get("name", "Accident Insurance Premium")
+        elif rule_type == "DEDUCTION_PENALTY":
+            cv.penalty_trigger_minutes = params.get("sla_minutes", 0)
+            cv.penalty_amount = Decimal(str(params.get("amount", 0)))
+            cv.penalty_name = params.get("name", "Late Delivery Penalty")
+        elif rule_type == "INCENTIVE_CAMPAIGN":
+            cv.campaign_amount = Decimal(str(params.get("amount", 0)))
+            cv.campaign_name = params.get("campaign", "")
+            cv.campaign_weekdays_only = params.get("weekdays_only", False)
+            cv.campaign_windows = params.get("windows", [])
+            if "min_distance_km" in params:
+                cv.campaign_min_distance_km = Decimal(str(params.get("min_distance_km", 0)))
+
+def _normalize_clauses(db_clauses: list[dict]) -> list[str]:
+    """Convert database clause objects to engine-compatible string format."""
+    normalized = []
+    for clause in db_clauses:
+        clause_type = clause.get("clause_type", "")
+        params = clause.get("parameters", {})
+        title = clause.get("title", "")
+
+        if clause_type == "BASE_RATE":
+            amount = params.get("amount")
+            unit = params.get("unit", "per_order")
+            if amount is not None:
+                if "per_order" in unit:
+                    normalized.append(f"Base pay: {amount}/order")
+                elif "per_day" in unit or "daily" in unit:
+                    normalized.append(f"Base pay: {amount}/day")
+        elif clause_type == "PER_KM_RATE":
+            rate = params.get("rate_per_km")
+            if rate is not None:
+                normalized.append(f"Per km: {rate}")
+        elif clause_type == "WAIT_TIME_RATE":
+            rate = params.get("rate_per_min")
+            free = params.get("free_minutes")
+            cap = params.get("max_billable_minutes")
+            if rate is not None:
+                normalized.append(f"Wait time: {rate}/min (free {free} min, cap {cap} min)")
+        elif clause_type == "INCENTIVE":
+            amount = params.get("amount")
+            incentive_kind = params.get("basis", "incentive")
+            if "daily" in incentive_kind or "target" in incentive_kind:
+                normalized.append(f"Daily target bonus: {amount}")
+            elif "weekly" in incentive_kind:
+                normalized.append(f"Weekly target bonus: {amount}")
+            elif "campaign" in incentive_kind:
+                campaign = params.get("campaign", "campaign")
+                normalized.append(f"Campaign incentive ({campaign}): {amount}")
+            else:
+                normalized.append(f"Incentive: {amount}")
+        elif clause_type == "DEDUCTION":
+            name = params.get("name", "deduction")
+            category = params.get("category", "fee")
+            if "calc" in params:
+                calc = params["calc"]
+                if calc == "PERCENT_OF_BASE_DISTANCE_WAIT":
+                    rate = params.get("rate", 0)
+                    normalized.append(f"Deduction ({name}, {category}): {rate*100}% of base+distance+wait")
+                elif calc == "FLAT_PER_ORDER":
+                    amount = params.get("amount", 0)
+                    normalized.append(f"Deduction ({name}, {category}): {amount}/order")
+            else:
+                normalized.append(f"Deduction ({name}, {category})")
+    return normalized
+
+
+def _platform_key(name: str) -> str:
+    """'Uber Eats', 'ubereats' and 'UberEats' name the same platform."""
+    return "".join(ch for ch in (name or "").lower() if ch.isalnum())
+
+
+def load_platform_contracts(platform: str) -> list[dict[str, Any]]:
+    """Contract terms on file for one platform, built the same way the history
+    audit builds them.
+
+    Returns ``[{"contract": ContractVersion, "title", "status", "source"}]``.
+    Draft contracts are left out. An empty list means no terms are on file.
+    """
+    key = _platform_key(platform)
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute("SELECT * FROM contracts WHERE status <> 'DRAFT'")
+        rows = [c for c in cur.fetchall() if _platform_key(c["platform"]) == key]
+    if not rows:
+        return []
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            "SELECT * FROM platform_rules WHERE contract_version = ANY(%s)",
+            ([c["version_id"] for c in rows],),
+        )
+        rules = cur.fetchall() or []
+    rules_by_contract = defaultdict(list)
+    for rule in rules:
+        rules_by_contract[rule["contract_version"]].append(rule)
+
+    result = []
+    for c in rows:
+        cv = ContractVersion(
+            platform=c["platform"],
+            version_id=c["version_id"],
+            effective_from=c["effective_from"],
+            effective_to=c["effective_to"] if c["effective_to"] else None,
+            source=c["source"],
+            confidence=Decimal(str(c["confidence"])),
+            clauses=_normalize_clauses(c["clauses"]),
+        )
+        _populate_contract_params(cv, rules_by_contract.get(c["version_id"], []))
+        result.append({
+            "contract": cv,
+            "title": c["document_title"],
+            "status": c["status"],
+            "source": c["source"],
+        })
+    return result
+
+
 def load_partner_history_from_db(partner_id: str) -> dict[str, Any]:
     """
     Load a partner's 30-day transaction history from Supabase views/tables
@@ -243,105 +394,7 @@ def load_partner_history_from_db(partner_id: str) -> dict[str, Any]:
     # 4./5. Fetch partner profile (shared loader, single source of truth)
     partner_profile = load_partner_profile(partner_id)
 
-    # 6. Build ContractVersion objects
-    def _populate_contract_params(cv: ContractVersion, rules: list[dict]):
-        """Populate structured contract parameters from platform_rules."""
-        for rule in rules:
-            rule_type = rule.get("rule_type")
-            params = rule.get("parameters", {})
-            if rule_type == "BASE_PAY":
-                cv.base_pay_per_order = Decimal(str(params.get("amount", 0)))
-            elif rule_type == "DISTANCE":
-                cv.distance_rate_per_km = Decimal(str(params.get("rate_per_km", 0)))
-            elif rule_type == "WAIT":
-                cv.wait_free_minutes = params.get("free_minutes", 0)
-                cv.wait_rate_per_min = Decimal(str(params.get("rate_per_min", 0)))
-                cv.wait_max_billable_minutes = params.get("max_billable_minutes", 0)
-            elif rule_type == "INCENTIVE_PEAK":
-                cv.peak_amount = Decimal(str(params.get("amount", 0)))
-                cv.peak_windows = params.get("windows", [])
-            elif rule_type == "INCENTIVE_WEEKEND":
-                cv.weekend_amount = Decimal(str(params.get("amount", 0)))
-                cv.weekend_days = params.get("days", [])
-            elif rule_type == "BONUS_DAILY_TARGET":
-                cv.daily_threshold = params.get("threshold_orders", 0)
-                cv.daily_bonus = Decimal(str(params.get("amount", 0)))
-            elif rule_type == "BONUS_WEEKLY_TARGET":
-                cv.weekly_threshold = params.get("threshold_orders", 0)
-                cv.weekly_bonus = Decimal(str(params.get("amount", 0)))
-            elif rule_type == "DEDUCTION_FEE":
-                calc = params.get("calc", "")
-                if calc == "PERCENT_OF_BASE_DISTANCE_WAIT":
-                    cv.platform_fee_rate = Decimal(str(params.get("rate", 0)))
-                    cv.platform_fee_name = params.get("name", "Platform Service Fee")
-                elif calc == "FLAT_PER_ORDER":
-                    cv.insurance_amount = Decimal(str(params.get("amount", 0)))
-                    cv.insurance_name = params.get("name", "Accident Insurance Premium")
-            elif rule_type == "DEDUCTION_PENALTY":
-                cv.penalty_trigger_minutes = params.get("sla_minutes", 0)
-                cv.penalty_amount = Decimal(str(params.get("amount", 0)))
-                cv.penalty_name = params.get("name", "Late Delivery Penalty")
-            elif rule_type == "INCENTIVE_CAMPAIGN":
-                cv.campaign_amount = Decimal(str(params.get("amount", 0)))
-                cv.campaign_name = params.get("campaign", "")
-                cv.campaign_weekdays_only = params.get("weekdays_only", False)
-                cv.campaign_windows = params.get("windows", [])
-                if "min_distance_km" in params:
-                    cv.campaign_min_distance_km = Decimal(str(params.get("min_distance_km", 0)))
-
-    def _normalize_clauses(db_clauses: list[dict]) -> list[str]:
-        """Convert database clause objects to engine-compatible string format."""
-        normalized = []
-        for clause in db_clauses:
-            clause_type = clause.get("clause_type", "")
-            params = clause.get("parameters", {})
-            title = clause.get("title", "")
-
-            if clause_type == "BASE_RATE":
-                amount = params.get("amount")
-                unit = params.get("unit", "per_order")
-                if amount is not None:
-                    if "per_order" in unit:
-                        normalized.append(f"Base pay: {amount}/order")
-                    elif "per_day" in unit or "daily" in unit:
-                        normalized.append(f"Base pay: {amount}/day")
-            elif clause_type == "PER_KM_RATE":
-                rate = params.get("rate_per_km")
-                if rate is not None:
-                    normalized.append(f"Per km: {rate}")
-            elif clause_type == "WAIT_TIME_RATE":
-                rate = params.get("rate_per_min")
-                free = params.get("free_minutes")
-                cap = params.get("max_billable_minutes")
-                if rate is not None:
-                    normalized.append(f"Wait time: {rate}/min (free {free} min, cap {cap} min)")
-            elif clause_type == "INCENTIVE":
-                amount = params.get("amount")
-                incentive_kind = params.get("basis", "incentive")
-                if "daily" in incentive_kind or "target" in incentive_kind:
-                    normalized.append(f"Daily target bonus: {amount}")
-                elif "weekly" in incentive_kind:
-                    normalized.append(f"Weekly target bonus: {amount}")
-                elif "campaign" in incentive_kind:
-                    campaign = params.get("campaign", "campaign")
-                    normalized.append(f"Campaign incentive ({campaign}): {amount}")
-                else:
-                    normalized.append(f"Incentive: {amount}")
-            elif clause_type == "DEDUCTION":
-                name = params.get("name", "deduction")
-                category = params.get("category", "fee")
-                if "calc" in params:
-                    calc = params["calc"]
-                    if calc == "PERCENT_OF_BASE_DISTANCE_WAIT":
-                        rate = params.get("rate", 0)
-                        normalized.append(f"Deduction ({name}, {category}): {rate*100}% of base+distance+wait")
-                    elif calc == "FLAT_PER_ORDER":
-                        amount = params.get("amount", 0)
-                        normalized.append(f"Deduction ({name}, {category}): {amount}/order")
-                else:
-                    normalized.append(f"Deduction ({name}, {category})")
-        return normalized
-
+    # 6. Build ContractVersion objects (helpers are module-level, shared)
     contract_versions = []
     # Group platform_rules by contract_version
     rules_by_contract = defaultdict(list)

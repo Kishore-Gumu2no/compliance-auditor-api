@@ -89,7 +89,10 @@ export const TelegramAuditNotice: React.FC<TelegramAuditNoticeProps> = ({
       <div className="telegram-notice-body">
         <span className="telegram-notice-icon">📨</span>
         <div className="telegram-notice-text">
-          <strong>Your Telegram audit is ready</strong>
+          <strong>
+            Your Telegram audit is ready
+            {analysis?.evidence_mode_label ? ` — ${analysis.evidence_mode_label}` : ''}
+          </strong>
           <p>
             {platforms.length > 0
               ? `Documents you sent for ${platforms.join(', ')} have been audited.`

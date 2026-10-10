@@ -269,6 +269,26 @@ def get_default_contract_versions() -> List[ContractVersion]:
 # Run REAL Audit Engine on Synthetic Data
 # ============================================================
 
+def _invoke_node(name: str, state: Any) -> Dict[str, Any]:
+    """Run one audit-pipeline step on this state and hand back the state it produced.
+
+    The pipeline steps take a typed ``FairPayState`` and hand back a plain
+    dictionary, so each step's output is turned back into a typed state before
+    the next one runs. Without this the second step is given a dictionary and
+    stops with ``'dict' object has no attribute 'transactions'``, and the
+    findings come back as a dictionary instead of ``AuditFindings``.
+
+    Keys the audit state does not define (``controller_decisions``,
+    ``batch_summary``) are carried through untouched.
+    """
+    typed = state if isinstance(state, FairPayState) else FairPayState.model_validate(dict(state))
+    produced = dict(audit_graph.nodes[name].invoke(typed))
+    revalidated = FairPayState.model_validate(produced)
+    for field in FairPayState.model_fields:
+        produced[field] = getattr(revalidated, field)
+    return produced
+
+
 def run_engine_on_partner(
     partner_id: str,
     dataset: SyntheticDataset,
@@ -308,7 +328,8 @@ def run_engine_on_partner(
             filtered_versions.append(cv)
 
     # Run the REAL audit engine (orchestrator graph)
-    initial_state: FairPayState = {
+    # Built as plain data; _invoke_node turns it into a typed FairPayState.
+    initial_state: Dict[str, Any] = {
         "partner_id": partner_id,
         "partner_profile": partner_profile,
         "pdf_paths": [],
@@ -331,14 +352,14 @@ def run_engine_on_partner(
     # Run versioning → calculation → findings → controller nodes directly (skip evidence node)
     try:
         state = initial_state
-        state = audit_graph.nodes["versioning"].invoke(state)
+        state = _invoke_node("versioning", state)
         print(f"    [DEBUG] {partner_id}: versioning done, applicable_laws={len(state.get('applicable_laws', []))}")
-        state = audit_graph.nodes["calculation"].invoke(state)
+        state = _invoke_node("calculation", state)
         print(f"    [DEBUG] {partner_id}: calculation done, payment_calcs={len(state.get('payment_calculations', []))}")
-        state = audit_graph.nodes["findings"].invoke(state)
+        state = _invoke_node("findings", state)
         findings = state.get("audit_findings")
         print(f"    [DEBUG] {partner_id}: findings done, findings={findings is not None}")
-        state = audit_graph.nodes["controller"].invoke(state)
+        state = _invoke_node("controller", state)
         controller_decisions = state.get("controller_decisions", [])
         batch_summary = state.get("batch_summary")
         print(f"    [DEBUG] {partner_id}: controller done, decisions={len(controller_decisions)}, summary={batch_summary is not None}")

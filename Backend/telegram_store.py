@@ -101,6 +101,26 @@ def get_linked_partner(chat_id: int) -> Optional[str]:
     return row[0] if row else None
 
 
+def unlink_chat(chat_id: int) -> Dict[str, int]:
+    """Forget this Telegram chat: the link to the partner and its submissions.
+
+    What a partner asked FairPay to remember about them, they can ask it to
+    forget. Returns how many rows were removed.
+    """
+    ensure_tables()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM telegram_submissions WHERE chat_id = %s", (chat_id,))
+            submissions = cur.rowcount
+            cur.execute("DELETE FROM telegram_links WHERE chat_id = %s", (chat_id,))
+            links = cur.rowcount
+        conn.commit()
+        return {"links": links, "submissions": submissions}
+    except Exception:
+        conn.rollback()
+        raise
+
+
 # ---------------------------------------------------------------------------
 # Submissions
 # ---------------------------------------------------------------------------
@@ -183,24 +203,6 @@ _SELECT_COLUMNS = """
 """
 
 
-def list_submissions(partner_id: str, limit: int = 20) -> List[Dict[str, Any]]:
-    """Summaries for this partner only, newest first (no heavy result blobs)."""
-    ensure_tables()
-    with conn.cursor(row_factory=dict_row) as cur:
-        cur.execute(
-            f"""
-            SELECT {_SELECT_COLUMNS}
-            FROM telegram_submissions
-            WHERE partner_id = %s
-            ORDER BY created_at DESC
-            LIMIT %s
-            """,
-            (partner_id, limit),
-        )
-        rows = cur.fetchall()
-    return [_summary(r) for r in rows]
-
-
 def get_latest_complete(partner_id: str) -> Optional[Dict[str, Any]]:
     """The newest completed submission for this partner, including its results."""
     ensure_tables()
@@ -246,7 +248,13 @@ def get_submission_result(partner_id: str, submission_id: str) -> Optional[Dict[
 
 def mark_seen(submission_id: str, partner_id: str) -> bool:
     """Mark one submission as seen. Scoped by partner so a stray id cannot
-    touch another partner's row."""
+    touch another partner's row.
+
+    Seeing the result on the website is the second place a partner is shown it,
+    so the trip-level details are dropped here too (see
+    :func:`purge_submission_details`). Rows stored before purging existed are
+    cleaned up the first time they are opened.
+    """
     ensure_tables()
     try:
         with conn.cursor() as cur:
@@ -260,10 +268,156 @@ def mark_seen(submission_id: str, partner_id: str) -> bool:
             )
             updated = cur.rowcount
         conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    if updated > 0:
+        purge_submission_details(submission_id, partner_id)
+    return updated > 0
+
+
+# ---------------------------------------------------------------------------
+# Deleting the trip-level details once the partner has been shown the result
+# ---------------------------------------------------------------------------
+# The website promises that only the outcome is kept. So once a partner has
+# been shown their result, everything that describes their individual orders -
+# order ids, times of day, per-order amounts, login sessions - is deleted from
+# the row. What stays is the answer itself: the status, the headline, the
+# counts, the conditions and the comparison, which is what the website shows.
+
+# Whole blocks of per-order evidence, removed outright.
+_TRIP_LEVEL_BLOCKS = (
+    "incentive_evidence",          # every trip read off the documents
+    "transactions",                # per-order records (full audit)
+    "reconciliation_predictions",  # per-order predictions (full audit)
+    "work_time",                   # login/online sessions, with their times
+    "evidence_summaries",          # printed totals read off documents
+    "order_observations",          # per-order observations
+)
+
+PURGED_FLAG = "details_purged"
+
+
+def _purge_incentive_period(period: Dict[str, Any]) -> None:
+    """Drop the per-trip rows from one incentive period, keeping its verdict."""
+    period.pop("relevant_transactions", None)  # one row per trip, with its time
+    mismatch = period.get("counting_mismatch")
+    if isinstance(mismatch, dict):
+        mismatch.pop("orders", None)  # the order ids behind the count difference
+
+
+def purge_trip_details(payload: Any) -> Any:
+    """Return ``payload`` with every per-order detail removed.
+
+    Pure, so it can be tested without a database. Safe to run twice.
+    """
+    if not isinstance(payload, dict):
+        return payload
+    result = dict(payload)
+    for key in _TRIP_LEVEL_BLOCKS:
+        if key in result:
+            result[key] = [] if isinstance(result[key], list) else None
+
+    audit = result.get("incentive_audit")
+    if isinstance(audit, dict):
+        audit = dict(audit)
+        if isinstance(audit.get("primary"), dict):
+            audit["primary"] = dict(audit["primary"])
+            _purge_incentive_period(audit["primary"])
+        if isinstance(audit.get("other_periods"), list):
+            audit["other_periods"] = [dict(p) for p in audit["other_periods"] if isinstance(p, dict)]
+            for period in audit["other_periods"]:
+                _purge_incentive_period(period)
+        result["incentive_audit"] = audit
+
+    fit = result.get("incentive_fit")
+    if isinstance(fit, dict) and isinstance(fit.get("rider_pattern"), dict):
+        fit = dict(fit)
+        pattern = dict(fit["rider_pattern"])
+        pattern.pop("busiest_hours", None)   # which hours of the day they worked
+        pattern.pop("orders_per_day", None)  # the per-day order counts
+        fit["rider_pattern"] = pattern
+        result["incentive_fit"] = fit
+
+    if isinstance(result.get("spot_check"), list):
+        checks = []
+        for check in result["spot_check"]:
+            check = dict(check) if isinstance(check, dict) else check
+            if isinstance(check, dict):
+                check.pop("orders", None)  # the sampled orders themselves
+            checks.append(check)
+        result["spot_check"] = checks
+
+    result[PURGED_FLAG] = True
+    return result
+
+
+def _purge_results_by_platform(payload: Any) -> Any:
+    """Keep only whether each platform was audited, not what was read from it."""
+    if not isinstance(payload, dict):
+        return payload
+    kept = {}
+    for platform, outcome in payload.items():
+        if not isinstance(outcome, dict):
+            kept[platform] = outcome
+            continue
+        kept[platform] = {k: v for k, v in outcome.items()
+                          if k in ("status", "platform", "error", "message")}
+    return kept
+
+
+def purge_submission_details(submission_id: str, partner_id: Optional[str] = None) -> bool:
+    """Delete the trip-level details of one submission the partner has been shown.
+
+    Returns True when a row was rewritten. Running it again changes nothing.
+    """
+    ensure_tables()
+    where = "submission_id = %s" + (" AND partner_id = %s" if partner_id else "")
+    params: tuple = (submission_id, partner_id) if partner_id else (submission_id,)
+    try:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(f"SELECT merged_result, results_by_platform FROM telegram_submissions WHERE {where}", params)
+            row = cur.fetchone()
+            if not row or (row["merged_result"] or {}).get(PURGED_FLAG):
+                conn.commit()
+                return False
+            cur.execute(
+                f"""
+                UPDATE telegram_submissions
+                   SET merged_result = %s, results_by_platform = %s
+                 WHERE {where}
+                """,
+                (Jsonb(purge_trip_details(row["merged_result"] or {})),
+                 Jsonb(_purge_results_by_platform(row["results_by_platform"])),
+                 *params),
+            )
+            updated = cur.rowcount
+        conn.commit()
         return updated > 0
     except Exception:
         conn.rollback()
         raise
+
+
+def purge_shown_submission_details() -> List[str]:
+    """Clean up every completed submission that still holds trip-level details.
+
+    For rows stored before purging existed. Returns the ids that were cleaned.
+    """
+    ensure_tables()
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT submission_id
+              FROM telegram_submissions
+             WHERE status = 'complete'
+               AND merged_result IS NOT NULL
+               AND COALESCE((merged_result->>%s)::boolean, FALSE) = FALSE
+            """,
+            (PURGED_FLAG,),
+        )
+        ids = [str(r["submission_id"]) for r in cur.fetchall()]
+    return [sid for sid in ids if purge_submission_details(sid)]
 
 
 def _summary(row: Dict[str, Any]) -> Dict[str, Any]:

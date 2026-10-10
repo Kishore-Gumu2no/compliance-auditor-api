@@ -16,3 +16,5 @@ python-dotenv
 websockets
 httpx
 psycopg[binary]
+pytest
+pytest-asyncio

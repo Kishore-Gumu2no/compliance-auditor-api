@@ -12,12 +12,14 @@ The implementation follows the same style as the other backend modules:
 - The graph is compiled once and reused by ``run_debate``.
 
 The user will import ``run_debate`` and pass a ``DebateState`` dict containing
-any pre‑computed information (evidence, versioning, calculations). The function
-returns the final state, where ``synthesis`` holds the combined narrative.
+the what-if ``scenario`` and its ``calculations``. The function returns the
+final state, where ``synthesis`` holds the combined narrative.
 '''
 
 from __future__ import annotations
 
+import ast
+from decimal import Decimal
 from typing import TypedDict, Literal, Dict, Any
 
 from pydantic import BaseModel, Field
@@ -36,15 +38,9 @@ class DebateState(TypedDict, total=False):
     node returns need to be present – LangGraph merges the dictionaries.
     """
 
-    # Input data (populated upstream by ``orchestrator``)
-    evidence: str | None
-    version_info: str | None
-    calculations: str | None
-    findings: str | None
-
-    # Earnings-opportunity mode. When ``scenario`` is present the three personas
-    # assess that what-if scenario instead of reviewing the audit report.
+    # Input: the what-if scenario and the partner's real figures behind it.
     scenario: str | None
+    calculations: str | None
 
     # Agent outputs
     realist: str | None
@@ -98,8 +94,7 @@ instructor_client = instructor.from_groq(groq_client, mode=instructor.Mode.JSON)
 # very small fallback implementation to keep the file runnable.
 # ---------------------------------------------------------------------------
 
-# Shared wording for earnings-opportunity mode. The 3-bullet / 60-word limits
-# match the audit prompts below.
+# Shared wording for every persona prompt (3 bullets, 60 words).
 _SCENARIO_RULES = (
     "CONSTRAINTS:\n"
     "- Maximum 3 bullet points\n"
@@ -124,110 +119,46 @@ def _scenario_details(state: DebateState) -> str:
 
 def build_realist_prompt(state: DebateState) -> str:
     """Return a prompt for the Realist persona - concise synthesis."""
-    if state.get("scenario"):
-        return (
-            "You are the REALIST advising a delivery partner about a what-if earnings "
-            "scenario. Give a balanced assessment of the calculated result.\n\n"
-            "OUTPUT FORMAT (strict):\n"
-            "## Realist Assessment\n"
-            "- Bullet 1: What the calculated financial impact actually is\n"
-            "- Bullet 2: Which part is an assumption rather than a fact\n"
-            "- Bullet 3: Balanced takeaway for the partner\n\n"
-            + _SCENARIO_RULES
-        ) + _scenario_details(state)
-    base = (
-        "You are the REALIST. Provide a concise, balanced synthesis of the audit findings.\n\n"
+    return (
+        "You are the REALIST advising a delivery partner about a what-if earnings "
+        "scenario. Give a balanced assessment of the calculated result.\n\n"
         "OUTPUT FORMAT (strict):\n"
         "## Realist Assessment\n"
-        "- Bullet 1: Key fact or conclusion\n"
-        "- Bullet 2: Key uncertainty or gap\n"
-        "- Bullet 3: Actionable insight\n\n"
-        "CONSTRAINTS:\n"
-        "- Maximum 3 bullet points\n"
-        "- Maximum 60 words total\n"
-        "- No introductions, conclusions, or explanations beyond bullets\n"
-        "- Distinguish verified facts from assumptions\n"
-        "- Do not repeat points already made by Optimist/Pessimist\n"
-        "- Focus on what the data actually shows"
-    )
-    details = []
-    for key in ("evidence", "version_info", "calculations", "findings"):
-        if value := state.get(key):
-            details.append(f"{key.replace('_', ' ').title()}: {value}\n")
-    return base + "\n\n" + "".join(details)
+        "- Bullet 1: What the calculated financial impact actually is\n"
+        "- Bullet 2: Which part is an assumption rather than a fact\n"
+        "- Bullet 3: Balanced takeaway for the partner\n\n"
+        + _SCENARIO_RULES
+    ) + _scenario_details(state)
 
 
 def build_optimist_prompt(state: DebateState) -> str:
     """Return a prompt for the Optimist persona - concise positive findings."""
-    if state.get("scenario"):
-        return (
-            "You are the OPTIMIST advising a delivery partner about a what-if earnings "
-            "scenario. Explain the potential benefits of this scenario.\n\n"
-            "OUTPUT FORMAT (strict):\n"
-            "## Optimist Assessment\n"
-            "- Bullet 1: The main earnings benefit, using the calculated figures\n"
-            "- Bullet 2: A second realistic upside of this change\n"
-            "- Bullet 3: A practical way the partner could make it work\n\n"
-            + _SCENARIO_RULES
-        ) + _scenario_details(state)
-    base = (
-        "You are the OPTIMIST. Highlight only the most important positive findings.\n\n"
+    return (
+        "You are the OPTIMIST advising a delivery partner about a what-if earnings "
+        "scenario. Explain the potential benefits of this scenario.\n\n"
         "OUTPUT FORMAT (strict):\n"
         "## Optimist Assessment\n"
-        "- Bullet 1: Most significant opportunity or favorable finding\n"
-        "- Bullet 2: Second most important positive aspect\n"
-        "- Bullet 3: Third positive point or potential benefit\n\n"
-        "CONSTRAINTS:\n"
-        "- Maximum 3 bullet points\n"
-        "- Maximum 60 words total\n"
-        "- No introductions, conclusions, or generic optimism\n"
-        "- Focus on opportunities and potential benefits supported by data\n"
-        "- Do not invent or exaggerate positive outcomes\n"
-        "- Only cite what the evidence actually supports"
-    )
-    details = []
-    for key in ("evidence", "version_info", "calculations", "findings"):
-        if value := state.get(key):
-            details.append(f"{key.replace('_', ' ').title()}: {value}\n")
-    return base + "\n\n" + "".join(details)
+        "- Bullet 1: The main earnings benefit, using the calculated figures\n"
+        "- Bullet 2: A second realistic upside of this change\n"
+        "- Bullet 3: A practical way the partner could make it work\n\n"
+        + _SCENARIO_RULES
+    ) + _scenario_details(state)
 
 
 def build_pessimist_prompt(state: DebateState) -> str:
     """Return a prompt for the Pessimist persona - concise risk findings."""
-    if state.get("scenario"):
-        return (
-            "You are the PESSIMIST advising a delivery partner about a what-if earnings "
-            "scenario. Explain the risks and limits of this scenario.\n\n"
-            "OUTPUT FORMAT (strict):\n"
-            "## Pessimist Assessment\n"
-            "- Bullet 1: The main reason the estimate may not be reached\n"
-            "- Bullet 2: A real cost or downside of this change, such as demand that "
-            "varies by hour or higher fuel and vehicle costs, where relevant\n"
-            "- Bullet 3: A limit of the data behind the estimate\n\n"
-            + _SCENARIO_RULES + "\n"
-            "- Do not invent losses, penalties or consequences the figures do not show"
-        ) + _scenario_details(state)
-    base = (
-        "You are the PESSIMIST. Highlight only the most important risks.\n\n"
+    return (
+        "You are the PESSIMIST advising a delivery partner about a what-if earnings "
+        "scenario. Explain the risks and limits of this scenario.\n\n"
         "OUTPUT FORMAT (strict):\n"
         "## Pessimist Assessment\n"
-        "- Bullet 1: Most significant risk or concern\n"
-        "- Bullet 2: Second most important risk\n"
-        "- Bullet 3: Third risk or data gap\n\n"
-        "CONSTRAINTS:\n"
-        "- Maximum 3 bullet points\n"
-        "- Maximum 60 words total\n"
-        "- No introductions, conclusions, or generic pessimism\n"
-        "- Focus on actual risks supported by the available data\n"
-        "- Do not invent hypothetical financial losses or legal consequences\n"
-        "- Do not speculate beyond what the evidence shows\n"
-        "- Only cite risks directly supported by the data"
-    )
-    details = []
-    for key in ("evidence", "version_info", "calculations", "findings"):
-        if value := state.get(key):
-            details.append(f"{key.replace('_', ' ').title()}: {value}\n")
-    return base + "\n\n" + "".join(details)
+        "- Bullet 1: The main reason the estimate may not be reached\n"
+        "- Bullet 2: A real cost or downside of this change, such as demand that "
+        "varies by hour or higher fuel and vehicle costs, where relevant\n"
+        "- Bullet 3: A limit of the data behind the estimate\n\n"
+        + _SCENARIO_RULES + "\n"
+        "- Do not invent losses, penalties or consequences the figures do not show"
+    ) + _scenario_details(state)
 
 # ---------------------------------------------------------------------------
 # Agent node functions – each returns a dict that updates the graph state.
@@ -369,6 +300,159 @@ async def synthesizer_node(state: DebateState) -> Dict[str, Any]:
     return {"synthesis": synthesis}
 
 # ---------------------------------------------------------------------------
+# One-sentence scenario summary - "This scenario would decrease your earnings
+# by about Rs X because ..."
+# ---------------------------------------------------------------------------
+# The LLM only turns the typed scenario into a direction, a short reason and an
+# arithmetic formula over the partner's named figures. The rupee amount is
+# computed here by evaluating that formula - never written by the LLM.
+
+class ScenarioImpact(BaseModel):
+    direction: Literal["increase", "decrease", "no_change", "unclear"] = Field(
+        ..., description="Effect of the scenario on the partner's earnings"
+    )
+    change_formula: str | None = Field(
+        default=None,
+        description=(
+            "Arithmetic for the change in rupees using only the listed figure names and "
+            "numbers stated in the scenario, e.g. 'platform_peak_hour_incentives * 0.20'. "
+            "Positive means more money, negative means less. Null if it cannot be worked out."
+        ),
+    )
+    reason: str = Field(..., description="One short simple-English clause saying why, without the word 'because'")
+
+
+_ALLOWED_OPS = {
+    ast.Add: lambda a, b: a + b,
+    ast.Sub: lambda a, b: a - b,
+    ast.Mult: lambda a, b: a * b,
+    ast.Div: lambda a, b: a / b,
+}
+_OP_SYMBOLS = {ast.Add: "+", ast.Sub: "−", ast.Mult: "×", ast.Div: "÷"}
+
+
+def evaluate_formula(formula: str, figures: Dict[str, Dict[str, Any]]) -> Decimal:
+    """Evaluate +, -, *, / over named figures and plain numbers. Anything else is rejected."""
+    def _eval(node: ast.AST) -> Decimal:
+        if isinstance(node, ast.Expression):
+            return _eval(node.body)
+        if isinstance(node, ast.BinOp) and type(node.op) in _ALLOWED_OPS:
+            return _ALLOWED_OPS[type(node.op)](_eval(node.left), _eval(node.right))
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
+            value = _eval(node.operand)
+            return -value if isinstance(node.op, ast.USub) else value
+        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)) and not isinstance(node.value, bool):
+            return Decimal(str(node.value))
+        if isinstance(node, ast.Name) and node.id in figures:
+            return Decimal(str(figures[node.id]["value"]))
+        raise ValueError(f"Not allowed in a scenario formula: {ast.dump(node)[:60]}")
+
+    return _eval(ast.parse(formula, mode="eval"))
+
+
+def _money_text(value: Decimal) -> str:
+    text = f"{value.quantize(Decimal('0.01')):,.2f}"
+    return f"₹{text[:-3] if text.endswith('.00') else text}"
+
+
+def describe_formula(formula: str, figures: Dict[str, Dict[str, Any]]) -> str:
+    """The formula with each figure's meaning and value, for the partner to check."""
+    def _show(node: ast.AST) -> str:
+        if isinstance(node, ast.Expression):
+            return _show(node.body)
+        if isinstance(node, ast.BinOp):
+            return f"({_show(node.left)} {_OP_SYMBOLS[type(node.op)]} {_show(node.right)})"
+        if isinstance(node, ast.UnaryOp):
+            return f"−{_show(node.operand)}" if isinstance(node.op, ast.USub) else _show(node.operand)
+        if isinstance(node, ast.Constant):
+            return str(node.value)
+        if isinstance(node, ast.Name):
+            f = figures[node.id]
+            value = _money_text(Decimal(str(f["value"]))) if f.get("money") else str(f["value"])
+            return f"{f['label']} {value}"
+        return "?"
+
+    text = _show(ast.parse(formula, mode="eval"))
+    return text[1:-1] if text.startswith("(") and text.endswith(")") else text
+
+
+def scenario_summary_sentence(impact: Dict[str, Any], period_days: int | None) -> str:
+    """The ultra-simple summary shown first. Pure formatting, no LLM."""
+    reason = (impact.get("reason") or "").strip().rstrip(".")
+    if reason.lower().startswith("because "):
+        reason = reason[8:]
+    because = f" because {reason}" if reason else ""
+    over = f" over {period_days} days" if period_days else ""
+    amount = impact.get("amount")
+    direction = impact.get("direction")
+    if amount is not None and direction in ("increase", "decrease"):
+        return f"This scenario would {direction} your earnings by about {_money_text(amount)}{over}{because}."
+    if direction == "no_change":
+        return f"This scenario would not change your earnings{because}."
+    if direction in ("increase", "decrease"):
+        return (f"This scenario would likely {direction} your earnings{because}. "
+                "Your data is not enough to put a rupee amount on it.")
+    return f"It is not clear whether this scenario would raise or lower your earnings{because}."
+
+
+async def summarize_scenario(
+    scenario: str,
+    figures: Dict[str, Dict[str, Any]],
+    figures_text: str,
+    period_days: int | None,
+    personas: Dict[str, str],
+) -> Dict[str, Any]:
+    """Direction, amount and one simple sentence for a typed scenario."""
+    prompt = (
+        "A delivery partner typed a what-if scenario. Work out how it changes their earnings.\n\n"
+        f"Scenario: {scenario}\n\n"
+        "The partner's real figures (name: meaning = value):\n"
+        f"{figures_text}\n\n"
+        "Three advisers already commented (for context only):\n"
+        + "\n".join(f"{k.title()}: {v}" for k, v in personas.items() if v)
+        + "\n\nReturn:\n"
+        "- direction: increase, decrease, no_change or unclear - the effect on the partner's earnings.\n"
+        "- change_formula: arithmetic for the change in rupees using ONLY the figure names above and "
+        "numbers stated in the scenario, with + - * / and brackets. Positive = more money, negative = "
+        "less. Null if these figures cannot measure the change. Never invent numbers.\n"
+        "- reason: one short clause in very simple English (no jargon), saying what changes, e.g. "
+        "'your peak-hour bonus would be 20% higher'. Do not start with 'because'."
+    )
+    impact: Dict[str, Any] = {"direction": "unclear", "reason": "", "amount": None, "calculation": None}
+    try:
+        result = instructor_client.chat.completions.create(
+            model="openai/gpt-oss-120b",
+            messages=[{"role": "user", "content": prompt}],
+            response_model=ScenarioImpact,
+            temperature=0.0,
+        )
+        response = await result if hasattr(result, "__await__") else result
+        impact.update(direction=response.direction, reason=response.reason)
+        if response.change_formula:
+            try:
+                change = evaluate_formula(response.change_formula, figures)
+                impact["calculation"] = f"{describe_formula(response.change_formula, figures)} = {_money_text(abs(change))}"
+                impact["amount"] = abs(change).quantize(Decimal("0.01"))
+                # The computed sign decides the direction, not the LLM's word.
+                if change > Decimal("0.50"):
+                    impact["direction"] = "increase"
+                elif change < Decimal("-0.50"):
+                    impact["direction"] = "decrease"
+                else:
+                    impact["direction"], impact["amount"] = "no_change", None
+            except (ValueError, SyntaxError, ArithmeticError, KeyError):
+                impact["calculation"] = None
+    except Exception as exc:
+        impact["error"] = f"{type(exc).__name__}: {exc}"
+        impact["summary"] = (
+            "FairPay could not summarise this scenario right now. See the detailed analysis below."
+        )
+        return impact
+    impact["summary"] = scenario_summary_sentence(impact, period_days)
+    return impact
+
+
+# ---------------------------------------------------------------------------
 # Graph construction – compiled once for reuse.
 # ---------------------------------------------------------------------------
 
@@ -404,8 +488,8 @@ _DEBATE_GRAPH = _build_graph()
 async def run_debate(initial_state: DebateState) -> DebateState:
     """Execute the debate graph.
 
-    ``initial_state`` should contain any upstream data (evidence, version info,
-    calculations, findings). The returned dict includes the three persona
+    ``initial_state`` should contain the what-if ``scenario`` and its
+    ``calculations``. The returned dict includes the three persona
     analyses and the final ``synthesis``.
     """
     # ``invoke`` returns the final state dict.
@@ -420,10 +504,8 @@ async def run_debate(initial_state: DebateState) -> DebateState:
 #
 #     async def demo():
 #         init = {
-#             "evidence": "Sample evidence…",
-#             "version_info": "v1.2",
+#             "scenario": "Work 2 more hours a day",
 #             "calculations": "...",
-#             "findings": "...",
 #         }
 #         result = await run_debate(init)
 #         print(result["synthesis"])

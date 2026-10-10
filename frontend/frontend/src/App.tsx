@@ -1,7 +1,17 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import './App.css';
-import { createEarningsStream, auditPartnerHistory, type StreamMessage, type AuditResponse } from './services/api';
+import {
+  createEarningsStream,
+  auditPartnerHistory,
+  runIncentiveAudit,
+  get_latest_telegram_audit,
+  type StreamMessage,
+  type AuditResponse,
+  type IncentiveAuditRequest,
+  type IncentiveReport,
+} from './services/api';
 import { CounterfactualSimulator } from './components/CounterfactualSimulator';
+import IncentiveAuditResult from './components/IncentiveAuditResult';
 import { SyntheticDataUpload } from './components/SyntheticDataUpload';
 import SimplifiedAuditResult from './components/SimplifiedAuditResult';
 import TelegramAuditNotice from './components/TelegramAuditNotice';
@@ -47,6 +57,12 @@ function App() {
   const [isDiscoverLoading, setIsDiscoverLoading] = useState(false);
   const [discoverError, setDiscoverError] = useState<string | null>(null);
 
+  // Incentive check ("Why didn't I get my incentive?") - kept apart from the
+  // full audit result above; it never feeds the Audit Results views.
+  const [incentiveReport, setIncentiveReport] = useState<IncentiveReport | null>(null);
+  const [isIncentiveLoading, setIsIncentiveLoading] = useState(false);
+  const [incentiveError, setIncentiveError] = useState<string | null>(null);
+
   // Demo state
   const [demoMode] = useState(isDemoMode);
 
@@ -67,6 +83,26 @@ function App() {
       // Reconnection is handled in the api service
       setTimeout(() => setIsConnected(true), 3000);
     }
+  }, []);
+
+  // Keep the last Telegram incentive check on the page after a reload. A new,
+  // unseen one is still announced by TelegramAuditNotice.
+  useEffect(() => {
+    let cancelled = false;
+    get_latest_telegram_audit(PARTNER_ID)
+      .then((latest) => {
+        const analysis = latest?.ai_analysis;
+        if (cancelled || !latest?.submission?.seen_on_website || analysis?.evidence_mode !== 'incentive_audit') return;
+        setIncentiveReport((current) => current ?? {
+          incentive_audit: analysis.incentive_audit ?? null,
+          incentive_fit: analysis.incentive_fit ?? null,
+          submission_id: analysis.submission_id,
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Initialize WebSocket connection (only in non-demo mode)
@@ -110,6 +146,9 @@ function App() {
     }, 100);
   };
 
+  const scrollToResults = () =>
+    setTimeout(() => document.getElementById('audit-results')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+
   const handleDiscoverAudit = async () => {
     setIsDiscoverLoading(true);
     setDiscoverError(null);
@@ -119,19 +158,33 @@ function App() {
     try {
       const result = await auditPartnerHistory('bobby');
       setUploadResult(result);
-
-      // Scroll to audit results section
-      setTimeout(() => {
-        const resultsSection = document.getElementById('audit-results');
-        if (resultsSection) {
-          resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-      }, 100);
+      scrollToResults();
     } catch (error) {
       setDiscoverError(error instanceof Error ? error.message : 'Failed to run history audit');
     } finally {
       setIsDiscoverLoading(false);
     }
+  };
+
+  const runIncentiveCheck = async (req: IncentiveAuditRequest) => {
+    setIsIncentiveLoading(true);
+    setIncentiveError(null);
+    try {
+      const report = await runIncentiveAudit(req);
+      setIncentiveReport(report);
+      scrollToResults();
+    } catch (error) {
+      setIncentiveError(error instanceof Error ? error.message : 'Failed to check your incentive');
+    } finally {
+      setIsIncentiveLoading(false);
+    }
+  };
+
+  // One action behind the single button: the full 30-day pay audit, then why an
+  // incentive was missed and which platform's incentive structure fits.
+  const handleCheck30DayAudit = async () => {
+    await handleDiscoverAudit();
+    await runIncentiveCheck({ partner_id: PARTNER_ID, source: 'history' });
   };
 
   return (
@@ -144,13 +197,13 @@ function App() {
             <span className="brand-text">FairPay Engine</span>
           </div>
           <div className="nav-links">
-            <a href="#live-earnings" className="nav-link">Live Earnings</a>
+            {/* Header links only; every other section stays on the page. */}
+            <a href="#live-earnings" className="nav-link">Earnings</a>
             <a href="#why-fairpay" className="nav-link">The Problem</a>
-            <a href="#evidence-upload" className="nav-link">Upload Evidence</a>
+            <a href="#evidence-upload" className="nav-link">Send Evidence</a>
             <a href="#audit-results" className="nav-link">Audit Results</a>
             <a href="#what-if-i-earn-more" className="nav-link">How to Earn More</a>
             <a href="#privacy" className="nav-link">Privacy</a>
-            <a href="#synthetic-data" className="nav-link">Synthetic Data</a>
             {demoMode && (
               <span className="demo-badge">DEMO MODE</span>
             )}
@@ -216,24 +269,26 @@ function App() {
             </div>
 
             {/* Milestone 2 CTA: Discover how you can earn more */}
+            {/* One button: the full 30-day pay audit, why an incentive was
+                missed, and which platform's incentive structure fits. */}
             <div className="cta-discover-section">
               <button
                 className="cta-discover-button"
-                onClick={handleDiscoverAudit}
-                disabled={isDiscoverLoading}
-                aria-label="Run 30-day audit to discover earning optimization"
+                onClick={handleCheck30DayAudit}
+                disabled={isDiscoverLoading || isIncentiveLoading}
+                aria-label="Check your 30 day audit"
               >
-                {isDiscoverLoading ? (
+                {isDiscoverLoading || isIncentiveLoading ? (
                   <>
                     <span className="loading-spinner" style={{ marginRight: 'var(--spacing-8)' }} />
-                    Analyzing 30-day history...
+                    Checking your 30 day audit...
                   </>
                 ) : (
-                  'Discover how you can earn more'
+                  'Check your 30 day audit'
                 )}
               </button>
-              {discoverError && (
-                <p className="cta-discover-error" role="alert">{discoverError}</p>
+              {(discoverError || incentiveError) && (
+                <p className="cta-discover-error" role="alert">{discoverError || incentiveError}</p>
               )}
             </div>
           </div>
@@ -270,7 +325,7 @@ function App() {
                 <div className="solution-card">
                   <div className="solution-icon">🛡️</div>
                   <h3>Zero-Trust Evidence</h3>
-                  <p>Upload evidence securely — your personal data is redacted before any analysis.</p>
+                  <p>Send evidence securely through Telegram — your personal data is redacted before any analysis.</p>
                 </div>
                 <div className="solution-card">
                   <div className="solution-icon">📊</div>
@@ -288,11 +343,11 @@ function App() {
             <div className="upload-content upload-content-split">
               <div className="upload-info">
                 <span className="section-badge">EVIDENCE</span>
-                <h2 className="section-title-large">Upload Your Evidence</h2>
+                <h2 className="section-title-large">Send Your Evidence on Telegram</h2>
                 <p className="upload-description">
-                  Provide your earnings evidence to trigger a comprehensive audit. FairPay's zero-trust ingestion engine
-                  processes your documents locally, redacts all personal information, and determines whether you received
-                  your rightful pay.
+                  Uploading docs on website? Nah that's the old way, let's do it on Telegram so that you can know which
+                  documents or photos to send by particularly selecting and sending them to our bot.{' '}
+                  <span className="emphasis">EASY SIMPLE CONVENIENT</span>
                 </p>
               </div>
 
@@ -332,25 +387,61 @@ function App() {
               </div>
             </div>
 
-            {/* Documents are submitted through the Telegram bot; the website shows results. */}
-            {TELEGRAM_BOT_URL ? (
-              <a
-                className="telegram-cta"
-                href={TELEGRAM_BOT_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <span className="telegram-cta-icon" aria-hidden="true">📨</span>
-                <span className="telegram-cta-text">Upload your documents through Telegram</span>
-                <span className="telegram-cta-arrow" aria-hidden="true">→</span>
-              </a>
-            ) : (
-              <div className="telegram-cta telegram-cta-disabled" aria-disabled="true">
-                <span className="telegram-cta-icon" aria-hidden="true">📨</span>
-                <span className="telegram-cta-text">Upload your documents through Telegram</span>
-                <span className="telegram-cta-note">Telegram link not configured (set VITE_TELEGRAM_BOT_URL)</span>
+            {/* What the two choices in the Telegram bot (step 3) mean. */}
+            {/* The two options the Telegram bot offers, each with what to send
+                and its own link. Nothing is submitted on this website. */}
+            <div className="telegram-options">
+              <h3 className="evidence-card-title">Choose what to check, then send it on Telegram</h3>
+              <div className="telegram-options-grid">
+                <div className="telegram-option">
+                  <strong>Option 1 — Didn't get your incentive?</strong>
+                  <span>
+                    Send one full day of trips, every single one, plus the incentive screen if you have it.
+                    FairPay then tells you what the incentive needed and why it was not paid.
+                  </span>
+                  {TELEGRAM_BOT_URL ? (
+                    <a
+                      className="incentive-button"
+                      href={TELEGRAM_BOT_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Open Telegram and send a day's trips
+                    </a>
+                  ) : (
+                    <span className="incentive-button is-disabled" aria-disabled="true">
+                      Telegram link not configured
+                    </span>
+                  )}
+                </div>
+                <div className="telegram-option">
+                  <strong>Option 2 — Full audit</strong>
+                  <span>
+                    Send all your orders and payments for a period. PDF statements work best. FairPay matches
+                    every order with its payment and shows any money that may be missing.
+                  </span>
+                  {TELEGRAM_BOT_URL ? (
+                    <a
+                      className="incentive-button is-secondary"
+                      href={TELEGRAM_BOT_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Open Telegram and send statements
+                    </a>
+                  ) : (
+                    <span className="incentive-button is-disabled" aria-disabled="true">
+                      Telegram link not configured
+                    </span>
+                  )}
+                </div>
               </div>
-            )}
+              <p className="telegram-options-note">
+                The bot asks you to choose Option 1 or Option 2 after you send <code>/start</code>, then link your
+                data with <code>/link</code> and your ID. Your results appear on this page.
+                {!TELEGRAM_BOT_URL && ' Set VITE_TELEGRAM_BOT_URL to enable the links.'}
+              </p>
+            </div>
 
             {demoMode && (
               <div className="upload-area">
@@ -395,23 +486,46 @@ function App() {
               <TelegramAuditNotice
                 partnerId={PARTNER_ID}
                 onView={(result) => {
+                  const analysis = result?.ai_analysis;
+                  if (analysis?.evidence_mode === 'incentive_audit') {
+                    // Shown in its own section, never as a full-audit result.
+                    setIncentiveReport({
+                      incentive_audit: analysis.incentive_audit ?? null,
+                      incentive_fit: analysis.incentive_fit ?? null,
+                      submission_id: analysis.submission_id,
+                    });
+                    scrollToResults();
+                    return;
+                  }
                   setDemoAuditResult(null);
                   setUploadResult(result);
                 }}
               />
 
-              {uploadResult || demoAuditResult ? (
-                <SimplifiedAuditResult
-                  predictions={uploadResult?.ai_analysis?.reconciliation_predictions || []}
-                  evidenceGaps={uploadResult?.ai_analysis?.evidence_gaps || []}
-                  uploadResult={uploadResult}
-                  demoAuditResult={demoAuditResult}
-                />
+              {uploadResult || demoAuditResult || incentiveReport ? (
+                <>
+                  {(uploadResult || demoAuditResult) && (
+                    <SimplifiedAuditResult
+                      predictions={uploadResult?.ai_analysis?.reconciliation_predictions || []}
+                      evidenceGaps={uploadResult?.ai_analysis?.evidence_gaps || []}
+                      uploadResult={uploadResult}
+                      demoAuditResult={demoAuditResult}
+                    />
+                  )}
+                  {/* Why an incentive was missed, then which platform's
+                      incentive structure fits, in the same results section. */}
+                  {incentiveReport && (
+                    <IncentiveAuditResult
+                      report={incentiveReport}
+                      busy={isIncentiveLoading}
+                    />
+                  )}
+                </>
               ) : (
                 <div className="audit-empty-state">
                   <div className="empty-icon">📋</div>
                   <h3>No Audit Results Yet</h3>
-                  <p>Upload your earnings evidence in the section above to run your first compliance audit.</p>
+                  <p>Send your earnings evidence to the FairPay Telegram bot to run your first compliance audit.</p>
                   <p className="empty-hint">The audit will check your pay against minimum wage laws, calculate discrepancies, and provide a verifiable receipt.</p>
                   {demoMode && (
                     <div className="demo-samples" style={{ marginTop: 'var(--spacing-32)' }}>
@@ -463,12 +577,12 @@ function App() {
                 <div className="privacy-card">
                   <div className="privacy-icon">🚫</div>
                   <h3>No Data Storage</h3>
-                  <p>Your uploaded documents are processed in memory and never saved to disk. When it comes to personal data, what happens in engine stays in engine, and vanishes</p>
+                  <p>Documents you send through Telegram are deleted as soon as the audit finishes. The trips read from them — their times and amounts — are deleted too, as soon as you have been shown your result.</p>
                 </div>
                 <div className="privacy-card">
                   <div className="privacy-icon">🔐</div>
                   <h3>Zero-Trust Architecture</h3>
-                  <p>The audit engine only receives redacted, anonymized data. Your identity is never linked to the analysis results.</p>
+                  <p>Names, phone numbers and other personal details are blacked out before the AI ever sees a document. FairPay keeps your partner ID with your result, so it knows whose result to show you.</p>
                 </div>
                 <div className="privacy-card">
                   <div className="privacy-icon">📜</div>
@@ -478,7 +592,7 @@ function App() {
               </div>
 
               <div className="privacy-notice">
-                <p><strong>FairPay Engine does not store your personal details.</strong> The only data retained is the audit result: discrepancy calculations, compliance status, and the cryptographic receipt — all fully anonymized.</p>
+                <p><strong>FairPay Engine does not store your personal details.</strong> What is kept is your result — the amounts worked out, whether the conditions were met, and the receipt — stored under your partner ID so it can be shown back to you. FairPay also remembers which Telegram chat that ID belongs to; send <strong>/unlink</strong> to the bot and it forgets the chat and your past results.</p>
               </div>
             </div>
           </div>

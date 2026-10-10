@@ -4,13 +4,16 @@ from typing import List, Set
 from decimal import Decimal
 
 from models import FairPayState, PartnerProfile, LegalBasis
-from evidence_extractor import process_evidence, EvidenceExtractionError
+from evidence_extractor import process_evidence_detailed, EvidenceExtractionError
 from versioning import (
     resolve_contract_version,
-    resolve_applicable_laws,
-    resolve_applicable_laws_local,
+    laws_for_transaction,
     extract_classification_probability
 )
+from law_store import LawStore, LawStoreUnavailable, seeded_local_store
+
+LAWS_UNAVAILABLE_GAP = ("The law knowledge base (Qdrant) could not be read, so no legal or minimum-wage check "
+                        "was made for this audit.")
 from calculations import calculate_payments, calculate_business_costs
 from findings import (
     analyze_contract_compliance,
@@ -24,7 +27,7 @@ from real_data import normalize_real_records
 
 def evidence_node(state: FairPayState) -> FairPayState:
     try:
-        records, extraction_gaps, work_time = process_evidence(
+        evidence = process_evidence_detailed(
             state.pdf_paths,
             state.image_paths,
             state.platform,
@@ -37,14 +40,17 @@ def evidence_node(state: FairPayState) -> FairPayState:
             "evidence_gaps": list(state.evidence_gaps) + [str(exc)],
         }
 
-    normalized = normalize_real_records(records)
+    normalized = normalize_real_records(evidence["records"])
     return {
         **state.model_dump(),
         "transactions": normalized["transactions"],
         "reconciliation_payment_calculations": normalized["payment_calculations"],
         "reconciliation_predictions": normalized["predictions"],
-        "evidence_gaps": extraction_gaps + normalized["evidence_gaps"],
-        "work_time": work_time,
+        "evidence_gaps": evidence["gaps"] + normalized["evidence_gaps"],
+        "work_time": evidence["work_time"],
+        # Carried for the evidence-mode layer; the audit stages ignore them.
+        "evidence_summaries": evidence["summaries"],
+        "order_observations": evidence["order_observations"],
     }
 
 
@@ -68,17 +74,21 @@ def versioning_node(state: FairPayState) -> FairPayState:
             resolved_contracts.append(cv)
 
     classification_prob = extract_classification_probability(transactions)
+    # Laws come from Qdrant, read once per audit and chosen per trip by date.
+    # use_local_laws (synthetic verification, tests) reads an in-memory Qdrant
+    # holding the seed files instead - the same store and selection code.
+    evidence_gaps = list(state.evidence_gaps)
+    try:
+        store = seeded_local_store() if state.use_local_laws else LawStore()
+        current_laws, zones = store.current_laws(), store.zone_map()
+    except LawStoreUnavailable:
+        # No silent fallback to a local copy: say plainly that laws were not checked.
+        current_laws, zones = [], {}
+        evidence_gaps.append(LAWS_UNAVAILABLE_GAP)
     # Store laws per transaction to preserve association for legal reasoning
     applicable_laws_per_tx = []
     for tx in transactions:
-        tx_contract = resolve_contract_version(tx, contract_versions)
-        # Use local law resolution for synthetic verification (no Qdrant network calls)
-        # Check if we're in test/synthetic mode via state flag or environment
-        use_local = state.use_local_laws
-        if use_local:
-            laws = resolve_applicable_laws_local(tx, classification_prob, partner_profile, tx_contract)
-        else:
-            laws = resolve_applicable_laws(tx, classification_prob, partner_profile, tx_contract)
+        laws = laws_for_transaction(tx, classification_prob, partner_profile, current_laws, zones)
         applicable_laws_per_tx.append({
             "transaction_id": tx.transaction_id,
             "laws": laws
@@ -94,7 +104,8 @@ def versioning_node(state: FairPayState) -> FairPayState:
         "contract_versions": resolved_contracts,
         "applicable_laws": flat_laws,
         "applicable_laws_per_tx": applicable_laws_per_tx,
-        "classification_probability": classification_prob
+        "classification_probability": classification_prob,
+        "evidence_gaps": evidence_gaps
     }
 
 
@@ -133,7 +144,7 @@ def findings_node(state: FairPayState) -> FairPayState:
 
     compliance = analyze_contract_compliance(payment_calcs, transactions)
     legal = analyze_legal_risks(transactions, applicable_laws_per_tx, classification_prob, payment_calcs)
-    economic = analyze_economic_concerns(business_cost_calcs, transactions, payment_calcs)
+    economic = analyze_economic_concerns(business_cost_calcs, transactions, payment_calcs, applicable_laws_per_tx)
 
     audit_findings = aggregate_findings(compliance, legal, economic, evidence_gaps)
     audit_findings.partner_id = state.partner_id
@@ -201,10 +212,10 @@ def run_audit(
         "audit_findings": None,
         "evidence_gaps": [],
         "classification_probability": Decimal("0.5"),
-        "counterfactual_scenarios": None,
         "reconciliation_predictions": reconciliation_predictions or [],
         "reconciliation_payment_calculations": reconciliation_payment_calculations or [],
-        "use_local_laws": True,
+        # Production audits read laws from Qdrant (law_store).
+        "use_local_laws": False,
         "status": "ingesting",
         "error": None,
     }

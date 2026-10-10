@@ -36,6 +36,9 @@ VISION_EXTRACTION_MODEL = os.getenv("FAIRPAY_VISION_MODEL", "qwen/qwen3.8-27b")
 
 # Gap wording other modules (e.g. the Telegram summary) look for.
 NOT_CHECKED_PREFIX = "Not checked (no date on the document):"
+# Raised when the documents hold totals or bank credits but no checkable
+# order; the Telegram bridge reports such documents as not checked.
+TOTALS_ONLY_MESSAGE = "These documents show totals (an earnings summary or bank credits), not individual orders."
 
 # Groq rejects base64 images above 4 MB; stay safely under it.
 _MAX_IMAGE_BASE64_BYTES = 3_500_000
@@ -66,6 +69,8 @@ class DocumentRecord(BaseModel):
     wait_time_minutes: Optional[int] = Field(default=None, description="Only when waiting minutes are printed")
     arrived_at_pickup: Optional[str] = Field(default=None, description="Printed time of arriving at the pickup location, e.g. '02:16 PM'")
     picked_up_at: Optional[str] = Field(default=None, description="Printed time the order was picked up, e.g. '02:22 PM'")
+    order_time: Optional[str] = Field(default=None, description="Printed time of the order itself (placed, accepted or delivered), e.g. '01:42 PM'")
+    order_time_label: Optional[str] = Field(default=None, description="The label printed next to order_time, e.g. 'Delivered at'")
     contract_version: Optional[str] = None
 
 
@@ -78,8 +83,30 @@ class WorkTimeEntry(BaseModel):
     minutes_part: Optional[int] = Field(default=None, description="Minutes of a printed duration, e.g. 20 in '6h 20m'")
 
 
+class SummaryAdjustment(BaseModel):
+    """An adjustment printed on an earnings summary (not tied to one order)."""
+    label: str = Field(description="The adjustment's label exactly as printed")
+    amount: Optional[Decimal] = Field(default=None, description="Printed amount, as a positive number")
+    kind: Literal["deduction", "fee", "cash_collected", "advance_or_instant_withdrawal", "other"] = "other"
+
+
+class SummaryEntry(BaseModel):
+    """A total that is not tied to one order: an earnings summary or a bank credit."""
+    summary_type: Literal["earnings_summary", "bank_credit"]
+    period_start: Optional[date] = Field(default=None, description="Earnings summary: first day the printed total covers")
+    period_end: Optional[date] = Field(default=None, description="Earnings summary: last day the printed total covers")
+    credit_date: Optional[date] = Field(default=None, description="Bank credit: the date the money was credited")
+    amount: Optional[Decimal] = Field(default=None, description="The printed total or credited amount")
+    amount_label: Optional[str] = Field(default=None, description="The label printed next to the amount, exactly as shown, e.g. 'Total earnings', 'Net payout', 'Amount credited'")
+    order_count: Optional[int] = Field(default=None, description="Number of orders, only if printed on the summary")
+    adjustments: List[SummaryAdjustment] = Field(default_factory=list, description="Deductions, fees, cash collected or advances printed on the summary")
+    payer_label: Optional[str] = Field(default=None, description="Bank credit: the sender or narration as printed")
+    reference: Optional[str] = Field(default=None, description="Bank credit: the printed transaction reference (e.g. UTR), if any")
+
+
 class DocumentExtraction(BaseModel):
     records: List[DocumentRecord] = Field(default_factory=list)
+    summaries: List[SummaryEntry] = Field(default_factory=list)
     work_time: List[WorkTimeEntry] = Field(default_factory=list)
 
 
@@ -190,12 +217,20 @@ def _image_data_url(image: Image.Image) -> str:
 def build_extraction_prompt(platform: str, text: Optional[str] = None) -> str:
     """Build the platform-specific extraction prompt (shared by text and images)."""
     prompt = f"""You are reading a delivery partner's {platform} earnings evidence.
-Return every order-level record you can see.
+Return every order-level record and every printed total you can see.
 
 Record types:
 - "earning": what the platform says the partner earned for one order (an order earnings screen, or a row in an order list or statement).
 - "settlement": money actually paid out for one order (a settlement or payout history entry).
-A total that is not tied to one order ID is NOT a record. A policy, rate card or incentive table is NOT a record.
+A total that is not tied to one order ID is NOT a record (put it in summaries instead). A policy, rate card or incentive table is NOT a record.
+
+Summaries (put in summaries, not in records):
+- "earnings_summary": a total the platform says the partner earned or is owed for a day, week or other period (for example a weekly earnings screen or a payout summary). Copy the printed period into period_start and period_end. If the screen prints several totals for the same period (for example "Total earnings" and "Net payout"), add one entry per total, each with its own amount_label.
+- "bank_credit": money received in a bank account or wallet (a bank statement line, an SMS or a UPI/bank credit screen). One entry per credit, with credit_date, amount, the printed sender or narration in payer_label, and the printed reference if any. Do not include debits.
+- amount_label: copy the label printed next to the amount exactly as shown. Do not reword it.
+- adjustments: only deductions, fees, cash collected or advances/instant withdrawals that the summary itself prints, each with its printed label and amount.
+- order_count: only if a number of orders is printed on the summary.
+- Never add up order rows to make a summary. Never create a summary that is not printed.
 
 Rules:
 - Copy values exactly as printed. Amounts are plain numbers with no currency symbol or commas (1,020.00 -> 1020.00).
@@ -206,6 +241,7 @@ Rules:
 - duration_minutes: the total trip time, if printed.
 - wait_time_minutes: only when waiting minutes are printed.
 - arrived_at_pickup and picked_up_at: the printed times of arriving at the pickup location and of picking up the order, exactly as shown (for example "02:16 PM").
+- order_time: the printed time of the order itself (placed, accepted or delivered), exactly as shown, with its printed label in order_time_label (for example "Delivered at"). Null if no such time is printed.
 - incentive, bonus, deduction: only per-order values printed for that order.
 
 Working time (put in work_time, not in records):
@@ -230,18 +266,30 @@ Working time (put in work_time, not in records):
 
 
 def extract_transactions(text: str, platform: str) -> DocumentExtraction:
-    """Extract records and working time from (already PII-masked) document text."""
-    try:
-        result = client.chat.completions.create(
+    """Extract records and working time from (already PII-masked) document text.
+
+    Read by Qwen on Groq, or by the NVIDIA fallback once Groq's daily
+    allowance is used up (see reader_fallback).
+    """
+    from reader_fallback import FALLBACK_VISION_MODEL, read_with_fallback
+
+    messages = [{"role": "user", "content": build_extraction_prompt(platform, text)}]
+    return read_with_fallback(
+        lambda: client.chat.completions.create(
             model=TEXT_EXTRACTION_MODEL,
             response_model=DocumentExtraction,
-            messages=[{"role": "user", "content": build_extraction_prompt(platform, text)}],
+            messages=messages,
             temperature=0.0,
             max_retries=2,
-        )
-    except Exception as exc:
-        raise EvidenceExtractionError("Structured document extraction failed.") from exc
-    return result
+        ),
+        lambda reader: reader.chat.completions.create(
+            model=FALLBACK_VISION_MODEL,
+            response_model=DocumentExtraction,
+            messages=messages,
+            temperature=0.0,
+            max_retries=2,
+        ),
+        "Structured document extraction failed.")
 
 
 def extract_image_records(image: Image.Image, platform: str) -> DocumentExtraction:
@@ -254,23 +302,32 @@ def extract_image_records(image: Image.Image, platform: str) -> DocumentExtracti
     except Exception as exc:
         raise EvidenceExtractionError("PII redaction failed; the image was not sent to the LLM.") from exc
 
-    try:
-        result = client.chat.completions.create(
+    from reader_fallback import FALLBACK_VISION_MODEL, read_with_fallback
+
+    messages = [{
+        "role": "user",
+        "content": [
+            {"type": "text", "text": build_extraction_prompt(platform)},
+            {"type": "image_url", "image_url": {"url": _image_data_url(redacted)}},
+        ],
+    }]
+    # Qwen on Groq, or the NVIDIA fallback once Groq's daily allowance is used up.
+    return read_with_fallback(
+        lambda: client.chat.completions.create(
             model=VISION_EXTRACTION_MODEL,
             response_model=DocumentExtraction,
-            messages=[{
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": build_extraction_prompt(platform)},
-                    {"type": "image_url", "image_url": {"url": _image_data_url(redacted)}},
-                ],
-            }],
+            messages=messages,
             temperature=0.0,
             max_retries=2,
-        )
-    except Exception as exc:
-        raise EvidenceExtractionError("Structured image extraction failed.") from exc
-    return result
+        ),
+        lambda reader: reader.chat.completions.create(
+            model=FALLBACK_VISION_MODEL,
+            response_model=DocumentExtraction,
+            messages=messages,
+            temperature=0.0,
+            max_retries=2,
+        ),
+        "Structured image extraction failed.")
 
 
 # ---------------------------------------------------------------------------
@@ -467,13 +524,94 @@ def detect_gaps(transactions: List[ExtractedFinancialRecord]) -> List[str]:
     return gaps
 
 
-def process_evidence(
+def to_summaries(entries: List[Tuple[str, SummaryEntry]]) -> List[Dict]:
+    """Earnings totals and bank credits as plain dicts, tagged with their source.
+
+    Copies of the same printed total (the same screen sent twice) are kept
+    once. Nothing is summed or filled in here.
+    """
+    seen: set = set()
+    result: List[Dict] = []
+    for source, entry in entries:
+        if entry.amount is None or entry.amount < 0:
+            continue
+        key = (
+            entry.summary_type, entry.period_start, entry.period_end, entry.credit_date,
+            entry.amount, (entry.amount_label or "").strip().lower(), entry.reference,
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        item = entry.model_dump(mode="json")
+        item["source"] = source
+        result.append(item)
+    return result
+
+
+def to_order_observations(
+    documents: List[DocumentRecord], records: List[ExtractedFinancialRecord]
+) -> List[Dict]:
+    """Printed per-order facts for the orders that passed to_financial_records.
+
+    Carries what the reconciliation records do not (the printed order time),
+    so later checks can say exactly what the document showed.
+    """
+    times: Dict[str, Tuple[Optional[str], Optional[str]]] = {}
+    for doc in documents:
+        if doc.record_type != "earning" or not doc.order_id or doc.order_id in times:
+            continue
+        if doc.order_time:
+            times[doc.order_id] = (doc.order_time, doc.order_time_label or "Order time")
+        elif doc.picked_up_at:
+            times[doc.order_id] = (doc.picked_up_at, "Picked up at")
+        elif doc.arrived_at_pickup:
+            times[doc.order_id] = (doc.arrived_at_pickup, "Arrived at pickup")
+
+    observations: List[Dict] = []
+    for record in records:
+        if record.record_type != "earning":
+            continue
+        printed_time, time_label = times.get(record.order_id, (None, None))
+        clock = _parse_clock(printed_time)
+        observations.append({
+            "order_id": record.order_id,
+            "transaction_id": record.transaction_id,
+            "platform": record.platform,
+            "date": record.record_date.isoformat(),
+            "time": clock.strftime("%H:%M") if clock else None,
+            "time_label": time_label if clock else None,
+            "amount": str(record.amount),
+            "gross_amount": None if record.gross_amount is None else str(record.gross_amount),
+            "incentive": None if record.incentive is None else str(record.incentive),
+            "bonus": None if record.bonus is None else str(record.bonus),
+            "deduction": None if record.deduction is None else str(record.deduction),
+            "distance_km": None if record.distance_km is None else str(record.distance_km),
+            "duration_minutes": record.duration_minutes,
+            "wait_time_minutes": record.wait_time_minutes,
+        })
+    return observations
+
+
+def extract_evidence(
     pdf_paths: List[str],
     image_paths: List[str],
-    platform: str
-) -> Tuple[List[ExtractedFinancialRecord], List[str], List[Dict]]:
-    """Main entry point: extract transactions and working time from PDFs/images."""
+    platform: str,
+) -> Dict:
+    """Read every document once: order rows, printed totals and working time.
+
+    Same OCR / PII / LLM path for every evidence mode. Returns
+    ``{"documents", "summaries", "work_entries", "read_gaps"}`` and raises
+    only when nothing at all could be read.
+    """
+    from reader_fallback import reader_choice
+
+    with reader_choice():
+        return _extract_evidence(pdf_paths, image_paths, platform)
+
+
+def _extract_evidence(pdf_paths: List[str], image_paths: List[str], platform: str) -> Dict:
     documents: List[DocumentRecord] = []
+    summaries: List[Tuple[str, SummaryEntry]] = []
     work_entries: List[WorkTimeEntry] = []
     read_gaps: List[str] = []
 
@@ -485,6 +623,7 @@ def process_evidence(
             raise EvidenceExtractionError("PII sanitization failed; extraction was not sent to the LLM.") from exc
         extraction = extract_transactions(sanitized_text, platform)
         documents.extend(extraction.records)
+        summaries.extend(("PDF text", s) for s in extraction.summaries)
         work_entries.extend(extraction.work_time)
 
     images: List[Tuple[str, Image.Image]] = []
@@ -501,22 +640,69 @@ def process_evidence(
         try:
             extraction = extract_image_records(image, platform)
             documents.extend(extraction.records)
+            summaries.extend((label, s) for s in extraction.summaries)
             work_entries.extend(extraction.work_time)
         except EvidenceExtractionError as exc:
             read_gaps.append(f"{label.capitalize()} could not be read ({exc}), so it was not checked.")
 
+    return {
+        "documents": documents,
+        "summaries": to_summaries(summaries),
+        "work_entries": work_entries,
+        "read_gaps": read_gaps,
+    }
+
+
+def process_evidence_detailed(
+    pdf_paths: List[str],
+    image_paths: List[str],
+    platform: str
+) -> Dict:
+    """Order-level evidence for the audit pipeline, plus what else was printed.
+
+    Returns ``{"records", "gaps", "work_time", "summaries", "order_observations"}``.
+    Raises when no order-level record can be checked - the order-level
+    pipeline needs at least one.
+    """
+    bundle = extract_evidence(pdf_paths, image_paths, platform)
+    documents = bundle["documents"]
+    read_gaps = bundle["read_gaps"]
+    summaries = bundle["summaries"]
+
     if not documents:
         detail = " ".join(read_gaps)
+        if summaries:
+            raise EvidenceExtractionError(f"{TOTALS_ONLY_MESSAGE} {detail}".strip())
         raise EvidenceExtractionError(
             ("No financial records were found in the uploaded documents. " + detail).strip()
         )
 
     transactions, conversion_gaps = to_financial_records(documents, platform)
+    if not transactions and summaries:
+        raise EvidenceExtractionError(
+            f"{TOTALS_ONLY_MESSAGE} " + " ".join(read_gaps + conversion_gaps)
+        )
     if not transactions:
         raise EvidenceExtractionError(
             "No checkable financial records were found. " + " ".join(read_gaps + conversion_gaps)
         )
-    work_time, work_gaps = to_work_time(work_entries)
+    work_time, work_gaps = to_work_time(bundle["work_entries"])
     gaps = detect_gaps(transactions) + read_gaps + conversion_gaps + work_gaps
 
-    return transactions, gaps, work_time
+    return {
+        "records": transactions,
+        "gaps": gaps,
+        "work_time": work_time,
+        "summaries": summaries,
+        "order_observations": to_order_observations(documents, transactions),
+    }
+
+
+def process_evidence(
+    pdf_paths: List[str],
+    image_paths: List[str],
+    platform: str
+) -> Tuple[List[ExtractedFinancialRecord], List[str], List[Dict]]:
+    """Main entry point: extract transactions and working time from PDFs/images."""
+    result = process_evidence_detailed(pdf_paths, image_paths, platform)
+    return result["records"], result["gaps"], result["work_time"]

@@ -80,25 +80,16 @@ def debate_state_from_audit_context(
     *,
     platform: str,
     description: str,
+    figures_text: str,
 ) -> DebateState:
-    """Build debate input from sanitized audit context (no raw document text)."""
-    evidence_parts = [f"Platform: {platform}", f"Scenario: {description}"]
-    if audit_context.get("reconciliation_summary"):
-        evidence_parts.append(f"Reconciliation summary: {audit_context['reconciliation_summary']}")
-    if audit_context.get("evidence_gaps"):
-        evidence_parts.append(f"Evidence gaps: {len(audit_context['evidence_gaps'])} items")
-    if audit_context.get("findings_summary"):
-        evidence_parts.append(f"Findings summary: {audit_context['findings_summary']}")
+    """Build debate input for a typed what-if scenario (no raw document text).
 
-    version_info = "Contract versions supplied by partner upload" if audit_context.get("transaction_count") else "No contract version context"
-    calculations = f"Processed {audit_context.get('transaction_count', 0)} transactions"
-    findings = audit_context.get("findings_summary", {}).get("summary") or "No findings summary available"
-
+    The personas judge the scenario against ``figures_text``, the partner's
+    real numbers. ``audit_context`` identifies the completed audit it follows.
+    """
     return {
-        "evidence": ". ".join(evidence_parts),
-        "version_info": version_info,
-        "calculations": calculations,
-        "findings": findings,
+        "scenario": f"On {platform}: {description}",
+        "calculations": f"The partner's real figures:\n{figures_text}",
     }
 
 
@@ -117,6 +108,8 @@ def serialize_audit_state(state: Dict[str, Any]) -> Dict[str, Any]:
         "controller_decisions": _json_safe(state.get("controller_decisions") or []),
         "batch_summary": _json_safe(state.get("batch_summary")),
         "work_time": _json_safe(state.get("work_time") or []),
+        "evidence_summaries": _json_safe(state.get("evidence_summaries") or []),
+        "order_observations": _json_safe(state.get("order_observations") or []),
         "counterfactual_context": build_counterfactual_context(state),
     }
 

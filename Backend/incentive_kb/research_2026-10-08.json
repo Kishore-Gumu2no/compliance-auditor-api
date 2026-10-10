@@ -1,0 +1,1294 @@
+{
+  "about": "Research record for the FairPay incentive rule knowledge base. Read ONLY by incentive_kb_ingest.py, which writes these rules to Qdrant; the incentive audit never reads this file. Every stored field has an evidence quote. A field no source documents is left out and is stored as NOT_DOCUMENTED; a likely behaviour with no source goes in 'inferences', which the deterministic engine never uses. Research round 2, retrieved 2026-10-08.",
+  "source_tiers": {
+    "1": "Official platform documentation, websites, filings and app listings published by the platform itself",
+    "2": "Reputable journalism directly reporting an actual offer, and published research",
+    "3": "Real-world rider evidence (public screenshots, videos, rider reports)",
+    "4": "Third-party blogs, SEO articles and aggregators"
+  },
+  "not_ingested": [
+    {
+      "claim": "Uber Eats incentive rules for India",
+      "found_at": [
+        "https://www.businesswire.com/news/home/20200120005552/en/Zomato-Acquires-Uber%E2%80%99s-Food-Delivery-Business-in-India",
+        "https://www.sec.gov/Archives/edgar/data/1543151/000154315121000014/uber-20201231.htm"
+      ],
+      "tier": 1,
+      "reason": "Not a rule but a geography finding. Zomato's and Uber's own announcement of 21 January 2020 states Uber Eats discontinued operations in India and directed its delivery partners to Zomato. Uber's FY2020 Form 10-K confirms the divestiture. No Uber Eats India incentive therefore exists after that date, so every Uber Quest rule in this record is stored with region 'United States' and is never labelled India."
+    },
+    {
+      "claim": "Swiggy daily order-count slabs (e.g. 15/20/25 orders for fixed bonuses), '40 hours a week' login duration, 'order rejection below 5%', Swiggy Instamart slabs of 16/22/28 orders for Rs 160-520, Blinkit daily milestones of 18/24/30 orders for Rs 200-550, Zomato daily targets of 12/20/28 orders for Rs 150/350/600, Zomato '95% login compliance' in booked gig slots",
+      "found_at": [
+        "https://alphareach.tech/blog/swiggy-weekly-bonus-2026-guide/",
+        "https://alphareach.tech/blog/swiggy-instamart-delivery-boy-salary/",
+        "https://alphareach.tech/blog/blinkit-rate-card/",
+        "https://alphareach.tech/blog/zomato-target-bonus-rules/",
+        "https://alphareach.tech/blog/zomato-minimum-guarantee-payout/",
+        "https://www.pickmywork.com/blinkit-zepto-swiggy-delivery-partner-earnings-2026/"
+      ],
+      "tier": 4,
+      "reason": "Not stored as rules. These are unbylined third-party SEO pages that cite no source, and their figures differ between their own articles. Storing them would let the deterministic engine produce findings from numbers no platform, journalist or rider has corroborated. The claims are instead attached as LOW-confidence 'inferences' on the official documents for the same programmes, where the engine ignores them and a reader can still see them."
+    },
+    {
+      "claim": "Per-order rates and incentive shares for quick commerce (about Rs 12.18 per km, Rs 2.9 per minute, incentives about 23.5% of weekly earnings, one worker at about 90 orders for Rs 2,537 with Rs 828 of incentives per week)",
+      "found_at": [
+        "https://arxiv.org/pdf/2609.13178"
+      ],
+      "tier": 2,
+      "reason": "Read in full (GigSaathi / the internet Research Lab, 'Forced Volatility: Earnings and Incentives for Gig Work in Quick Commerce'). It reports aggregate regression results and per-order averages, not any incentive's target, reward or eligibility conditions, so it yields no rule fields. Its finding that platforms do not publish advance rate cards or incentives is recorded as context in the report."
+    },
+    {
+      "claim": "Swiggy rejection penalty of Rs 10 a week for rejecting four to ten orders in a week; Swiggy shift types (part-time 8pm-3am, full-time 11am-11pm, ultra full-time 7am-11pm) with mandatory weekends",
+      "found_at": [
+        "https://scroll.in/article/905468/ultra-full-time-and-incentive-pay-indias-food-delivery-men-deserve-a-better-deal"
+      ],
+      "tier": 2,
+      "reason": "Reputable journalism (Scroll.in, 15 December 2018) but it describes a penalty and shift structure, not an incentive's eligibility conditions, and it is eight years old. Recorded in the report as evidence that rejections affect pay; not stored as a rule."
+    }
+  ],
+  "rules": [
+    {
+      "rule_id": "swiggy-blr-double-earnings@dh-2025-12-31",
+      "program_id": "swiggy-campaign-double-earnings-blr",
+      "version": "reported-2025-12-31",
+      "platform": "Swiggy",
+      "region": "Bengaluru",
+      "region_level": "city",
+      "city": "Bengaluru",
+      "incentive_name": "Swiggy 'Double Earnings' New Year's Eve offer",
+      "incentive_type": "period_target",
+      "period_scope": "day",
+      "earning_basis": "orders",
+      "effective_from": "2025-12-31",
+      "effective_from_basis": "documented",
+      "effective_to": "2025-12-31",
+      "effective_to_basis": "documented",
+      "target_orders": 19,
+      "reward_amount": "2175",
+      "time_windows": [
+        "18:00-00:00"
+      ],
+      "login_window": "18:00-00:00",
+      "max_rejections_in_period": 1,
+      "source_type": "reported_offer",
+      "source_tier": 2,
+      "evidence_class": "real_world_evidence",
+      "source_title": "Gig workers strike fizzles out in Bengaluru (Deccan Herald)",
+      "source_url": "https://www.deccanherald.com/india/karnataka/bengaluru/gig-workers-strike-fizzles-out-in-bengaluru-3848091",
+      "source_publisher": "Deccan Herald",
+      "source_date": "2025-12-31",
+      "retrieved_on": "2026-10-08",
+      "source_reference": "a Swiggy offer in Bengaluru reported by Deccan Herald on 31 Dec 2025",
+      "confidence": "0.8",
+      "confidence_label": "HIGH",
+      "evidence_status": "OBSERVED",
+      "verification_count": 1,
+      "conditions_complete": false,
+      "description": "A one-day promotional offer in Bengaluru on New Year's Eve: 19 orders between 6 pm and midnight for Rs 2,175, with at most one order rejected in that window.",
+      "evidence": [
+        {
+          "field": "target_orders,reward_amount,time_windows",
+          "quote": "Swiggy ran a promotional ‘Double Earnings’ offer, advertising earnings of Rs 2,175 for 19 orders, within a period of six hours between 6 pm and 12 am.",
+          "source_url": "https://www.deccanherald.com/india/karnataka/bengaluru/gig-workers-strike-fizzles-out-in-bengaluru-3848091"
+        },
+        {
+          "field": "max_rejections_in_period",
+          "quote": "The gig workers had the option of rejecting only one order during the time period.",
+          "source_url": "https://www.deccanherald.com/india/karnataka/bengaluru/gig-workers-strike-fizzles-out-in-bengaluru-3848091"
+        },
+        {
+          "field": "region,city",
+          "quote": "To encourage delivery professionals, platforms, like Swiggy and Zomato rolled out heightened incentives across the city.",
+          "source_url": "https://www.deccanherald.com/india/karnataka/bengaluru/gig-workers-strike-fizzles-out-in-bengaluru-3848091",
+          "note": "The report is datelined Bengaluru, so the offer is stored as a Bengaluru offer and not as a nationwide rule."
+        }
+      ],
+      "inferences": [
+        {
+          "field": "counting.multi_order",
+          "inferred_behaviour": "Not documented for this offer. Whether each order of a batched trip counts towards the 19 is unknown.",
+          "confidence_label": "LOW",
+          "basis": "No source states a counting rule for this campaign."
+        }
+      ],
+      "notes": [
+        "A single-day campaign in one city, reported during a nationwide gig worker strike. It is evidence of one observed offer, not a standing Swiggy rule.",
+        "The reward is the offer's advertised total earnings for the 19 orders, which may include base pay rather than being a bonus on top."
+      ]
+    },
+    {
+      "rule_id": "swiggy-in-nye-peak-cap@pti-2025-12-31",
+      "program_id": "swiggy-campaign-nye-peak-in",
+      "version": "reported-2025-12-31",
+      "platform": "Swiggy",
+      "region": "India",
+      "region_level": "country",
+      "incentive_name": "Swiggy year-end peak earnings offer",
+      "incentive_type": "unspecified",
+      "period_scope": "not_documented",
+      "earning_basis": "not_documented",
+      "effective_from": "2025-12-31",
+      "effective_from_basis": "documented",
+      "effective_to": "2026-01-01",
+      "effective_to_basis": "documented",
+      "reward_text": "up to Rs 2,000 between 6 pm and midnight on 31 December, and up to Rs 10,000 across 31 December and 1 January",
+      "time_windows": [
+        "18:00-00:00"
+      ],
+      "source_type": "reported_offer",
+      "source_tier": 2,
+      "evidence_class": "real_world_evidence",
+      "source_title": "Zomato, Swiggy hike rider incentives amid nationwide gig worker strike (PTI/IANS wire copy)",
+      "source_url": "https://upstox.com/news/business-news/latest-updates/zomato-swiggy-hike-rider-incentives-amid-nationwide-gig-worker-strike-report/article-187004/",
+      "source_publisher": "PTI, carried by Upstox, News24 and AP7AM",
+      "source_date": "2025-12-31",
+      "retrieved_on": "2026-10-08",
+      "source_reference": "PTI wire copy of 31 Dec 2025 on Swiggy's year-end incentives",
+      "confidence": "0.6",
+      "confidence_label": "MEDIUM",
+      "evidence_status": "OBSERVED",
+      "verification_count": 3,
+      "conditions_complete": false,
+      "description": "Advertised maximum earnings for the year-end peak period. No order target or eligibility condition was reported, so this cannot be checked against a rider's orders.",
+      "evidence": [
+        {
+          "field": "reward_text,time_windows",
+          "quote": "up to ₹10,000 across December 31 and January 1",
+          "source_url": "https://upstox.com/news/business-news/latest-updates/zomato-swiggy-hike-rider-incentives-amid-nationwide-gig-worker-strike-report/article-187004/"
+        },
+        {
+          "field": "reward_text",
+          "quote": "up to ₹2,000 between 6 pm and midnight",
+          "source_url": "https://upstox.com/news/business-news/latest-updates/zomato-swiggy-hike-rider-incentives-amid-nationwide-gig-worker-strike-report/article-187004/"
+        }
+      ],
+      "notes": [
+        "The figures are advertised ceilings on earnings, not a target and reward, so no eligibility test can be derived from them.",
+        "Reported by three outlets carrying the same PTI/IANS copy, which is one source rather than three independent ones."
+      ]
+    },
+    {
+      "rule_id": "swiggy-daily-parttime@inc42-2021-09-15",
+      "program_id": "swiggy-daily-incentive-parttime",
+      "version": "reported-2021-09-15",
+      "platform": "Swiggy",
+      "region": "India",
+      "region_level": "country",
+      "incentive_name": "Swiggy daily incentive, part-time riders",
+      "incentive_type": "daily_target",
+      "period_scope": "day",
+      "earning_basis": "payout_amount",
+      "effective_from": "2021-09-15",
+      "effective_from_basis": "source_as_of_date",
+      "target_payout_amount": "300",
+      "reward_amount": "100",
+      "min_login_minutes": 360,
+      "min_rating": "4.6",
+      "source_type": "published_research",
+      "source_tier": 2,
+      "evidence_class": "real_world_evidence",
+      "source_title": "Why India's Food Delivery Workers Deserve Better Pay And Labour Protection (Inc42)",
+      "source_url": "https://inc42.com/features/why-indias-food-delivery-workers-deserve-better-pay-and-labour-protection/",
+      "source_publisher": "Inc42",
+      "source_date": "2021-09-15",
+      "retrieved_on": "2026-10-08",
+      "source_reference": "Inc42's report of 15 Sep 2021 on Swiggy's daily incentive",
+      "confidence": "0.55",
+      "confidence_label": "MEDIUM",
+      "evidence_status": "OBSERVED",
+      "verification_count": 1,
+      "conditions_complete": false,
+      "description": "A daily incentive of Rs 100 once the day's payout reaches Rs 300, for riders logging at least six hours, with a rating of 4.6 required.",
+      "evidence": [
+        {
+          "field": "target_payout_amount,reward_amount",
+          "quote": "the company pays INR 100 as a daily incentive whenever a rider hits a target payout of INR 300 for the day",
+          "source_url": "https://inc42.com/features/why-indias-food-delivery-workers-deserve-better-pay-and-labour-protection/"
+        },
+        {
+          "field": "min_login_minutes",
+          "quote": "at least six hours a day during the day/night shift",
+          "source_url": "https://inc42.com/features/why-indias-food-delivery-workers-deserve-better-pay-and-labour-protection/"
+        },
+        {
+          "field": "min_rating",
+          "quote": "maintain a rating of 4.6 to be eligible for these incentives",
+          "source_url": "https://inc42.com/features/why-indias-food-delivery-workers-deserve-better-pay-and-labour-protection/"
+        }
+      ],
+      "notes": [
+        "This is 2021 evidence. Swiggy's incentive structure has changed since; whether this still applies is unknown, and no end date is documented.",
+        "The target is a day's payout in rupees, not a number of orders."
+      ]
+    },
+    {
+      "rule_id": "swiggy-daily-fulltime@inc42-2021-09-15",
+      "program_id": "swiggy-daily-incentive-fulltime",
+      "version": "reported-2021-09-15",
+      "platform": "Swiggy",
+      "region": "India",
+      "region_level": "country",
+      "incentive_name": "Swiggy daily incentive, full-time riders",
+      "incentive_type": "daily_target",
+      "period_scope": "day",
+      "earning_basis": "payout_amount",
+      "effective_from": "2021-09-15",
+      "effective_from_basis": "source_as_of_date",
+      "target_payout_amount": "575",
+      "reward_amount": "200",
+      "min_login_minutes": 720,
+      "min_rating": "4.6",
+      "other_conditions": [
+        "Mandatory log-in during peak hours (lunch and dinner slots)"
+      ],
+      "source_type": "published_research",
+      "source_tier": 2,
+      "evidence_class": "real_world_evidence",
+      "source_title": "Why India's Food Delivery Workers Deserve Better Pay And Labour Protection (Inc42)",
+      "source_url": "https://inc42.com/features/why-indias-food-delivery-workers-deserve-better-pay-and-labour-protection/",
+      "source_publisher": "Inc42",
+      "source_date": "2021-09-15",
+      "retrieved_on": "2026-10-08",
+      "source_reference": "Inc42's report of 15 Sep 2021 on Swiggy's daily incentive",
+      "confidence": "0.55",
+      "confidence_label": "MEDIUM",
+      "evidence_status": "OBSERVED",
+      "verification_count": 1,
+      "conditions_complete": false,
+      "description": "A daily incentive of Rs 200 once the day's orders total Rs 575, for riders working twelve hours including peak slots, with a rating of 4.6 required.",
+      "evidence": [
+        {
+          "field": "target_payout_amount,reward_amount",
+          "quote": "INR 200 as a daily incentive to a 'full-time' worker if he can complete a minimum number of orders amounting to INR 575 for the day",
+          "source_url": "https://inc42.com/features/why-indias-food-delivery-workers-deserve-better-pay-and-labour-protection/"
+        },
+        {
+          "field": "min_login_minutes,other_conditions",
+          "quote": "12 hours, including the mandatory log-in during peak hours (lunch and dinner slots)",
+          "source_url": "https://inc42.com/features/why-indias-food-delivery-workers-deserve-better-pay-and-labour-protection/"
+        },
+        {
+          "field": "min_rating",
+          "quote": "maintain a rating of 4.6 to be eligible for these incentives",
+          "source_url": "https://inc42.com/features/why-indias-food-delivery-workers-deserve-better-pay-and-labour-protection/"
+        }
+      ],
+      "inferences": [
+        {
+          "field": "required_login_windows",
+          "inferred_behaviour": "The source says log-in during lunch and dinner slots is mandatory but does not give their clock times, so the windows cannot be checked.",
+          "confidence_label": "LOW",
+          "basis": "No source gives the slot times for this rule."
+        }
+      ],
+      "notes": [
+        "This is 2021 evidence. Whether it still applies is unknown, and no end date is documented.",
+        "The twelve-hour figure is described as hours worked; it is stored as a login requirement because the source ties it to incentive eligibility."
+      ]
+    },
+    {
+      "rule_id": "swiggy-in-daily-incentive@play-2026-10-01",
+      "program_id": "swiggy-in-daily-incentive",
+      "version": "play-listing-2026-10-01",
+      "platform": "Swiggy",
+      "region": "India",
+      "region_level": "country",
+      "incentive_name": "Swiggy daily incentives (as advertised by Swiggy)",
+      "incentive_type": "daily_target",
+      "period_scope": "day",
+      "effective_from": "2026-10-01",
+      "effective_from_basis": "source_as_of_date",
+      "payout_timing": "Weekly payouts, with the option to cash out daily",
+      "source_type": "official_platform_page",
+      "source_tier": 1,
+      "evidence_class": "real_world_evidence",
+      "source_title": "Swiggy Delivery Partner App - Google Play listing (developer: Swiggy)",
+      "source_url": "https://play.google.com/store/apps/details?id=in.swiggy.deliveryapp&hl=en_IN",
+      "source_publisher": "Swiggy",
+      "source_date": "2026-10-01",
+      "retrieved_on": "2026-10-08",
+      "source_reference": "Swiggy's Delivery Partner app listing, updated 1 Oct 2026",
+      "confidence": "0.9",
+      "confidence_label": "HIGH",
+      "evidence_status": "VERIFIED",
+      "verification_count": 1,
+      "conditions_complete": false,
+      "description": "Swiggy's own listing confirms a daily incentive exists and states the payout timing. It publishes no target, reward or eligibility condition; those are shown in the partner app.",
+      "evidence": [
+        {
+          "field": "incentive_type",
+          "quote": "Earn more with every delivery through order-based earnings, daily incentives, peak-time bonuses, and surge earnings.",
+          "source_url": "https://play.google.com/store/apps/details?id=in.swiggy.deliveryapp&hl=en_IN"
+        },
+        {
+          "field": "payout_timing",
+          "quote": "Easy weekly payouts with opportunity to cashout daily",
+          "source_url": "https://play.google.com/store/apps/details?id=in.swiggy.deliveryapp&hl=en_IN"
+        },
+        {
+          "field": "region",
+          "quote": "across 600+ cities in India",
+          "source_url": "https://play.google.com/store/apps/details?id=in.swiggy.deliveryapp&hl=en_IN"
+        },
+        {
+          "field": "min_login_minutes",
+          "quote": "There are no fixed shifts and no minimum hours required.",
+          "source_url": "https://play.google.com/store/apps/details?id=in.swiggy.deliveryapp&hl=en_IN",
+          "note": "About working in general, not about incentive eligibility, so the login requirement stays NOT_DOCUMENTED."
+        }
+      ],
+      "inferences": [
+        {
+          "field": "target_orders",
+          "inferred_behaviour": "Third-party summaries report standing daily order slabs in the range of roughly 15 to 25 orders, and a weekly login requirement near 40 hours with order rejection under 5%. No platform, journalism or rider source corroborates these figures.",
+          "confidence_label": "LOW",
+          "basis": "Unbylined third-party SEO pages only (alphareach.tech, pickmywork.com); not used by the deterministic engine."
+        }
+      ],
+      "notes": [
+        "VERIFIED means Swiggy confirms the programme exists, not that its terms are known. Its target and conditions are NOT_DOCUMENTED."
+      ]
+    },
+    {
+      "rule_id": "swiggy-in-peak-and-surge@play-2026-10-01",
+      "program_id": "swiggy-in-peak-and-surge",
+      "version": "play-listing-2026-10-01",
+      "platform": "Swiggy",
+      "region": "India",
+      "region_level": "country",
+      "incentive_name": "Swiggy peak-time bonuses and surge earnings (as advertised by Swiggy)",
+      "incentive_type": "per_order_bonus",
+      "period_scope": "not_documented",
+      "effective_from": "2026-10-01",
+      "effective_from_basis": "source_as_of_date",
+      "payout_timing": "Weekly payouts, with the option to cash out daily",
+      "source_type": "official_platform_page",
+      "source_tier": 1,
+      "evidence_class": "real_world_evidence",
+      "source_title": "Swiggy Delivery Partner App - Google Play listing (developer: Swiggy)",
+      "source_url": "https://play.google.com/store/apps/details?id=in.swiggy.deliveryapp&hl=en_IN",
+      "source_publisher": "Swiggy",
+      "source_date": "2026-10-01",
+      "retrieved_on": "2026-10-08",
+      "source_reference": "Swiggy's Delivery Partner app listing, updated 1 Oct 2026",
+      "confidence": "0.9",
+      "confidence_label": "HIGH",
+      "evidence_status": "VERIFIED",
+      "verification_count": 1,
+      "conditions_complete": false,
+      "description": "Swiggy names peak-time bonuses and surge earnings in one sentence and publishes neither the hours nor the amounts. Stored as one document because one sentence is the whole evidence for both.",
+      "evidence": [
+        {
+          "field": "incentive_type",
+          "quote": "daily incentives, peak-time bonuses, and surge earnings",
+          "source_url": "https://play.google.com/store/apps/details?id=in.swiggy.deliveryapp&hl=en_IN"
+        }
+      ],
+      "notes": [
+        "Peak hours and amounts are NOT_DOCUMENTED by Swiggy."
+      ]
+    },
+    {
+      "rule_id": "swiggy-in-joining-bonus@play-2026-10-01",
+      "program_id": "swiggy-in-joining-bonus",
+      "version": "play-listing-2026-10-01",
+      "platform": "Swiggy",
+      "region": "India",
+      "region_level": "country",
+      "incentive_name": "Swiggy joining bonus",
+      "incentive_type": "joining_bonus",
+      "effective_from": "2026-10-01",
+      "effective_from_basis": "source_as_of_date",
+      "reward_text": "up to ₹10,000",
+      "other_conditions": [
+        "Complete onboarding and go live; the bonus is then credited to the partner's account"
+      ],
+      "source_type": "official_platform_page",
+      "source_tier": 1,
+      "evidence_class": "real_world_evidence",
+      "source_title": "Swiggy Delivery Partner App - Google Play listing (developer: Swiggy)",
+      "source_url": "https://play.google.com/store/apps/details?id=in.swiggy.deliveryapp&hl=en_IN",
+      "source_publisher": "Swiggy",
+      "source_date": "2026-10-01",
+      "retrieved_on": "2026-10-08",
+      "source_reference": "Swiggy's Delivery Partner app listing, updated 1 Oct 2026",
+      "confidence": "0.85",
+      "confidence_label": "HIGH",
+      "evidence_status": "VERIFIED",
+      "verification_count": 1,
+      "conditions_complete": false,
+      "description": "A joining bonus for new partners. The amount is a ceiling and any order requirement is not published.",
+      "evidence": [
+        {
+          "field": "reward_text",
+          "quote": "get a joining bonus of up to ₹10,000",
+          "source_url": "https://play.google.com/store/apps/details?id=in.swiggy.deliveryapp&hl=en_IN"
+        },
+        {
+          "field": "other_conditions",
+          "quote": "Complete your onboarding, go live, and your bonus gets credited directly to your account.",
+          "source_url": "https://play.google.com/store/apps/details?id=in.swiggy.deliveryapp&hl=en_IN"
+        }
+      ],
+      "notes": [
+        "Not an order-target incentive, so the order-count audit does not evaluate it."
+      ]
+    },
+    {
+      "rule_id": "swiggy-in-referral-bonus@play-2026-10-01",
+      "program_id": "swiggy-in-referral-bonus",
+      "version": "play-listing-2026-10-01",
+      "platform": "Swiggy",
+      "region": "India",
+      "region_level": "country",
+      "incentive_name": "Swiggy referral bonus",
+      "incentive_type": "referral_bonus",
+      "effective_from": "2026-10-01",
+      "effective_from_basis": "source_as_of_date",
+      "reward_text": "up to ₹45,000 on every successful referral",
+      "other_conditions": [
+        "The referral must be 'successful'; what counts as successful is not published"
+      ],
+      "source_type": "official_platform_page",
+      "source_tier": 1,
+      "evidence_class": "real_world_evidence",
+      "source_title": "Swiggy Delivery Partner App - Google Play listing (developer: Swiggy)",
+      "source_url": "https://play.google.com/store/apps/details?id=in.swiggy.deliveryapp&hl=en_IN",
+      "source_publisher": "Swiggy",
+      "source_date": "2026-10-01",
+      "retrieved_on": "2026-10-08",
+      "source_reference": "Swiggy's Delivery Partner app listing, updated 1 Oct 2026",
+      "confidence": "0.85",
+      "confidence_label": "HIGH",
+      "evidence_status": "VERIFIED",
+      "verification_count": 1,
+      "conditions_complete": false,
+      "description": "A bonus for referring a new delivery partner.",
+      "evidence": [
+        {
+          "field": "reward_text",
+          "quote": "earn a referral bonus of up to ₹45,000 on every successful referral",
+          "source_url": "https://play.google.com/store/apps/details?id=in.swiggy.deliveryapp&hl=en_IN"
+        }
+      ],
+      "notes": [
+        "Not an order-target incentive, so the order-count audit does not evaluate it."
+      ]
+    },
+    {
+      "rule_id": "zomato-blr-nye-peak-login@dh-2025-12-31",
+      "program_id": "zomato-campaign-nye-peak-blr",
+      "version": "reported-2025-12-31",
+      "platform": "Zomato",
+      "region": "Bengaluru",
+      "region_level": "city",
+      "city": "Bengaluru",
+      "incentive_name": "Zomato New Year's Eve peak pay with a login condition",
+      "incentive_type": "per_order_bonus",
+      "period_scope": "day",
+      "earning_basis": "per_order",
+      "effective_from": "2025-12-31",
+      "effective_from_basis": "documented",
+      "effective_to": "2025-12-31",
+      "effective_to_basis": "documented",
+      "per_order_amount": "90",
+      "time_windows": [
+        "18:00-22:00"
+      ],
+      "login_window": "18:00-00:00",
+      "min_login_minutes_in_window": 210,
+      "source_type": "reported_offer",
+      "source_tier": 2,
+      "evidence_class": "real_world_evidence",
+      "source_title": "Gig workers strike fizzles out in Bengaluru (Deccan Herald)",
+      "source_url": "https://www.deccanherald.com/india/karnataka/bengaluru/gig-workers-strike-fizzles-out-in-bengaluru-3848091",
+      "source_publisher": "Deccan Herald",
+      "source_date": "2025-12-31",
+      "retrieved_on": "2026-10-08",
+      "source_reference": "a Zomato offer in Bengaluru reported by Deccan Herald on 31 Dec 2025",
+      "confidence": "0.8",
+      "confidence_label": "HIGH",
+      "evidence_status": "CONTRADICTED",
+      "verification_count": 1,
+      "contradicted_by": [
+        "zomato-in-nye-peak-rate@pti-2025-12-31"
+      ],
+      "conditions_complete": false,
+      "description": "Rs 90 per order between 6 pm and 10 pm in Bengaluru, conditional on being logged in for at least three and a half hours between 6 pm and midnight.",
+      "evidence": [
+        {
+          "field": "per_order_amount,time_windows,login_window,min_login_minutes_in_window",
+          "quote": "Zomato also offered a pay of Rs 90 between 6 and 10 pm, on the condition that delivery agents log in for a minimum period of three and a half hours between 6 pm and 12 am.",
+          "source_url": "https://www.deccanherald.com/india/karnataka/bengaluru/gig-workers-strike-fizzles-out-in-bengaluru-3848091"
+        }
+      ],
+      "notes": [
+        "A one-day campaign in one city during a nationwide strike, not a standing Zomato rule.",
+        "The Rs 90 figure disagrees with the Rs 120-150 per order that PTI reported nationally for the same date; both are stored and neither is preferred."
+      ]
+    },
+    {
+      "rule_id": "zomato-in-nye-peak-rate@pti-2025-12-31",
+      "program_id": "zomato-campaign-nye-peak-in",
+      "version": "reported-2025-12-31",
+      "platform": "Zomato",
+      "region": "India",
+      "region_level": "country",
+      "incentive_name": "Zomato New Year's Eve peak per-order rate",
+      "incentive_type": "per_order_bonus",
+      "period_scope": "day",
+      "earning_basis": "per_order",
+      "effective_from": "2025-12-31",
+      "effective_from_basis": "documented",
+      "effective_to": "2025-12-31",
+      "effective_to_basis": "documented",
+      "reward_text": "Rs 120-150 per order during peak hours, with up to Rs 3,000 over the day",
+      "time_windows": [
+        "18:00-00:00"
+      ],
+      "other_conditions": [
+        "Penalties on order denials and cancellations were temporarily waived for this campaign",
+        "Daily earnings of up to Rs 3,000 were stated to be subject to order volumes and availability"
+      ],
+      "source_type": "reported_offer",
+      "source_tier": 2,
+      "evidence_class": "real_world_evidence",
+      "source_title": "Zomato, Swiggy hike rider incentives amid nationwide gig worker strike (PTI/IANS wire copy)",
+      "source_url": "https://upstox.com/news/business-news/latest-updates/zomato-swiggy-hike-rider-incentives-amid-nationwide-gig-worker-strike-report/article-187004/",
+      "source_publisher": "PTI, carried by Upstox, News24, AP7AM and The Independent",
+      "source_date": "2025-12-31",
+      "retrieved_on": "2026-10-08",
+      "source_reference": "PTI wire copy of 31 Dec 2025 on Zomato's year-end incentives",
+      "confidence": "0.6",
+      "confidence_label": "MEDIUM",
+      "evidence_status": "CONTRADICTED",
+      "verification_count": 4,
+      "contradicted_by": [
+        "zomato-blr-nye-peak-login@dh-2025-12-31"
+      ],
+      "conditions_complete": false,
+      "description": "A reported national peak rate of Rs 120-150 per order for the same evening, with cancellation penalties waived. The amount is a range, so no single per-order amount is stored.",
+      "evidence": [
+        {
+          "field": "reward_text,time_windows",
+          "quote": "₹120–150 per order during peak hours between 6 pm and 12 am",
+          "source_url": "https://upstox.com/news/business-news/latest-updates/zomato-swiggy-hike-rider-incentives-amid-nationwide-gig-worker-strike-report/article-187004/"
+        },
+        {
+          "field": "other_conditions",
+          "quote": "up to ₹3,000 over the course of the day, subject to order volumes and availability",
+          "source_url": "https://upstox.com/news/business-news/latest-updates/zomato-swiggy-hike-rider-incentives-amid-nationwide-gig-worker-strike-report/article-187004/"
+        },
+        {
+          "field": "other_conditions",
+          "quote": "temporarily waived penalties on order denials and cancellations",
+          "source_url": "https://upstox.com/news/business-news/latest-updates/zomato-swiggy-hike-rider-incentives-amid-nationwide-gig-worker-strike-report/article-187004/"
+        }
+      ],
+      "notes": [
+        "Four outlets carried the same PTI/IANS copy, so this is one source and not four independent confirmations.",
+        "Disagrees with the Bengaluru report of Rs 90 per order for the same date. Both are stored; the audit treats the pair as AMBIGUOUS rather than choosing one."
+      ]
+    },
+    {
+      "rule_id": "zomato-del-minimum-guarantee@inc42-2020-12-17",
+      "program_id": "zomato-minimum-guarantee-delhi",
+      "version": "reported-2020-12-17",
+      "platform": "Zomato",
+      "region": "Delhi",
+      "region_level": "city",
+      "city": "Delhi",
+      "zone": "Saket, Malviya Nagar, Hauz Khas, Anand Vihar and Mayur Vihar",
+      "incentive_name": "Zomato weekly minimum guarantee pilot",
+      "incentive_type": "minimum_guarantee",
+      "period_scope": "week_mon_sun",
+      "earning_basis": "login_time",
+      "effective_from": "2020-12-17",
+      "effective_from_basis": "source_as_of_date",
+      "reward_text": "INR 4,000-5,000 a week",
+      "min_login_minutes": 3600,
+      "source_type": "published_research",
+      "source_tier": 2,
+      "evidence_class": "real_world_evidence",
+      "source_title": "Zomato Tests New Compensation Model For Delivery Partners With Minimum Guarantee Pay (Inc42)",
+      "source_url": "https://inc42.com/buzz/zomato-new-compensation-model-gig-economy/",
+      "source_publisher": "Inc42",
+      "source_date": "2020-12-17",
+      "retrieved_on": "2026-10-08",
+      "source_reference": "Inc42's report of 17 Dec 2020 on Zomato's minimum guarantee pilot in Delhi",
+      "confidence": "0.5",
+      "confidence_label": "MEDIUM",
+      "evidence_status": "OBSERVED",
+      "verification_count": 2,
+      "conditions_complete": false,
+      "description": "A guaranteed weekly payout for logging a minimum number of hours, piloted in named Delhi zones. The requirement is login time, not orders.",
+      "evidence": [
+        {
+          "field": "reward_text,min_login_minutes",
+          "quote": "a 'minimum guarantee' pay of INR 4,000-5,000 a week for deliveries in Delhi",
+          "source_url": "https://inc42.com/features/why-indias-food-delivery-workers-deserve-better-pay-and-labour-protection/",
+          "note": "Inc42's 2021 feature restates the pilot and gives the requirement as a minimum of 60 hours a week."
+        },
+        {
+          "field": "min_login_minutes",
+          "quote": "log in for a minimum of 60 hours a week",
+          "source_url": "https://inc42.com/features/why-indias-food-delivery-workers-deserve-better-pay-and-labour-protection/"
+        },
+        {
+          "field": "zone",
+          "quote": "piloted in Delhi's high-density areas (Saket, Malviya Nagar, Hauz Khaz, Anand Vihar, and Mayur Vihar)",
+          "source_url": "https://inc42.com/buzz/zomato-new-compensation-model-gig-economy/"
+        }
+      ],
+      "inferences": [
+        {
+          "field": "effective_to",
+          "inferred_behaviour": "Reported as a pilot in 2020 and not confirmed as running since; it may well have ended.",
+          "confidence_label": "LOW",
+          "basis": "No source reports the pilot's end."
+        }
+      ],
+      "notes": [
+        "This is 2020-2021 evidence about a pilot, the oldest rule in the knowledge base. Whether it still runs is unknown.",
+        "The sources give 60-65 hours a week; the lower bound of 60 hours is stored so the requirement is never overstated."
+      ]
+    },
+    {
+      "rule_id": "zomato-in-bonuses-incentives@play-2026-09-04",
+      "program_id": "zomato-in-bonuses-incentives",
+      "version": "play-listing-2026-09-04",
+      "platform": "Zomato",
+      "region": "India",
+      "region_level": "country",
+      "incentive_name": "Zomato bonuses and incentives (as advertised by Zomato)",
+      "incentive_type": "unspecified",
+      "period_scope": "not_documented",
+      "effective_from": "2026-09-04",
+      "effective_from_basis": "source_as_of_date",
+      "payout_timing": "Daily or weekly payout and instant withdrawal, as the partner chooses",
+      "source_type": "official_platform_page",
+      "source_tier": 1,
+      "evidence_class": "real_world_evidence",
+      "source_title": "Zomato Delivery Partner App - Google Play listing (developer: Zomato)",
+      "source_url": "https://play.google.com/store/apps/details?id=com.zomato.delivery&hl=en_IN",
+      "source_publisher": "Zomato",
+      "source_date": "2026-09-04",
+      "retrieved_on": "2026-10-08",
+      "source_reference": "Zomato's Delivery Partner app listing, updated 4 Sep 2026",
+      "confidence": "0.9",
+      "confidence_label": "HIGH",
+      "evidence_status": "VERIFIED",
+      "verification_count": 1,
+      "conditions_complete": false,
+      "description": "Zomato's own listing confirms bonuses and incentives exist and states the payout timing. It does not say whether they are daily or weekly and publishes no target or condition.",
+      "evidence": [
+        {
+          "field": "incentive_type",
+          "quote": "Earn up to ₹30000 per month with per-delivery payment, bonuses & incentives and high-demand peak payouts.",
+          "source_url": "https://play.google.com/store/apps/details?id=com.zomato.delivery&hl=en_IN"
+        },
+        {
+          "field": "payout_timing",
+          "quote": "Get daily or weekly payout and instant withdrawal as per your choice.",
+          "source_url": "https://play.google.com/store/apps/details?id=com.zomato.delivery&hl=en_IN"
+        },
+        {
+          "field": "region",
+          "quote": "Deliver food to customers in 500+ cities",
+          "source_url": "https://play.google.com/store/apps/details?id=com.zomato.delivery&hl=en_IN"
+        }
+      ],
+      "inferences": [
+        {
+          "field": "target_orders",
+          "inferred_behaviour": "Third-party summaries report standing daily order slabs around 12, 20 and 28 orders, and a 95% login-compliance requirement inside booked gig slots. No platform, journalism or rider source corroborates these figures.",
+          "confidence_label": "LOW",
+          "basis": "Unbylined third-party SEO pages only (alphareach.tech); not used by the deterministic engine."
+        }
+      ],
+      "notes": [
+        "VERIFIED means Zomato confirms incentives exist, not that any term is known."
+      ]
+    },
+    {
+      "rule_id": "zomato-in-peak-payouts@play-2026-09-04",
+      "program_id": "zomato-in-peak-payouts",
+      "version": "play-listing-2026-09-04",
+      "platform": "Zomato",
+      "region": "India",
+      "region_level": "country",
+      "incentive_name": "Zomato high-demand peak payouts (as advertised by Zomato)",
+      "incentive_type": "per_order_bonus",
+      "period_scope": "not_documented",
+      "effective_from": "2026-09-04",
+      "effective_from_basis": "source_as_of_date",
+      "payout_timing": "Daily or weekly payout and instant withdrawal, as the partner chooses",
+      "source_type": "official_platform_page",
+      "source_tier": 1,
+      "evidence_class": "real_world_evidence",
+      "source_title": "Zomato Delivery Partner App - Google Play listing (developer: Zomato)",
+      "source_url": "https://play.google.com/store/apps/details?id=com.zomato.delivery&hl=en_IN",
+      "source_publisher": "Zomato",
+      "source_date": "2026-09-04",
+      "retrieved_on": "2026-10-08",
+      "source_reference": "Zomato's Delivery Partner app listing, updated 4 Sep 2026",
+      "confidence": "0.9",
+      "confidence_label": "HIGH",
+      "evidence_status": "VERIFIED",
+      "verification_count": 1,
+      "conditions_complete": false,
+      "description": "Extra pay for deliveries at high-demand peak times. The hours and amounts are not published by Zomato.",
+      "evidence": [
+        {
+          "field": "incentive_type",
+          "quote": "Deliver from restaurants and earn more with peak-time payouts.",
+          "source_url": "https://play.google.com/store/apps/details?id=com.zomato.delivery&hl=en_IN"
+        }
+      ],
+      "notes": [
+        "The Deccan Herald and PTI reports of 31 Dec 2025 are observed instances of peak pay; this document is Zomato's own standing statement that peak payouts exist."
+      ]
+    },
+    {
+      "rule_id": "blinkit-ncr-payout-v1@theprint-2023-04-28",
+      "program_id": "blinkit-ncr-per-order-payout",
+      "version": "reported-structure-2021",
+      "platform": "Blinkit",
+      "region": "Delhi NCR",
+      "region_level": "city",
+      "city": "Delhi NCR",
+      "zone": "Noida, Greater Noida, Delhi, Gurugram, Ghaziabad and Faridabad",
+      "incentive_name": "Blinkit per-order payout structure (2021)",
+      "incentive_type": "per_order_bonus",
+      "period_scope": "not_documented",
+      "earning_basis": "per_order",
+      "effective_from": "2021-01-01",
+      "effective_from_basis": "source_year_only",
+      "effective_to": "2021-12-31",
+      "effective_to_basis": "superseded_by_newer_source",
+      "per_order_amount": "50",
+      "other_conditions": [
+        "Rs 8 for every order delivered beyond 4 km",
+        "Rs 7 per order peak-hour incentive"
+      ],
+      "source_type": "reported_offer",
+      "source_tier": 2,
+      "evidence_class": "real_world_evidence",
+      "source_title": "Why hundreds of delivery partners in Delhi-NCR are on strike over Blinkit's new payout structure (ThePrint)",
+      "source_url": "https://theprint.in/economy/why-hundreds-of-delivery-partners-in-delhi-ncr-are-on-strike-over-blinkits-new-payout-structure/1540127/",
+      "source_publisher": "ThePrint",
+      "source_date": "2023-04-28",
+      "retrieved_on": "2026-10-08",
+      "source_reference": "ThePrint's report of 28 Apr 2023 on Blinkit's payout structures in Delhi-NCR",
+      "confidence": "0.6",
+      "confidence_label": "MEDIUM",
+      "evidence_status": "SUPERSEDED",
+      "verification_count": 1,
+      "conditions_complete": false,
+      "description": "The earliest of three reported Blinkit payout structures in Delhi-NCR: Rs 50 minimum per order, Rs 8 beyond 4 km, and a Rs 7 peak-hour incentive.",
+      "evidence": [
+        {
+          "field": "per_order_amount",
+          "quote": "Original rate (2021): Rs 50 per order",
+          "source_url": "https://theprint.in/economy/why-hundreds-of-delivery-partners-in-delhi-ncr-are-on-strike-over-blinkits-new-payout-structure/1540127/"
+        },
+        {
+          "field": "other_conditions",
+          "quote": "Rs 8 for every order delivered beyond 4 km",
+          "source_url": "https://theprint.in/economy/why-hundreds-of-delivery-partners-in-delhi-ncr-are-on-strike-over-blinkits-new-payout-structure/1540127/"
+        },
+        {
+          "field": "other_conditions",
+          "quote": "They've also lost a Rs 4-per-order incentive during peak hours, which itself had been cut from Rs 7 in 2021.",
+          "source_url": "https://theprint.in/economy/why-hundreds-of-delivery-partners-in-delhi-ncr-are-on-strike-over-blinkits-new-payout-structure/1540127/"
+        }
+      ],
+      "notes": [
+        "The source dates this structure to 2021 without a month, so the start date is stored as the year only and must not be read as 1 January.",
+        "The date it was replaced is not documented; the end date is set to the day before the next reported structure.",
+        "ThePrint does not date the change from Rs 50 to Rs 25. FairPay ends this version at the end of 2021 because the source attributes Rs 50 to 2021 and the Rs 25 structure followed it; the real date is unknown, so no conclusion should rest on the boundary itself."
+      ]
+    },
+    {
+      "rule_id": "blinkit-ncr-payout-v2@theprint-2023-04-28",
+      "program_id": "blinkit-ncr-per-order-payout",
+      "version": "reported-structure-rs25",
+      "platform": "Blinkit",
+      "region": "Delhi NCR",
+      "region_level": "city",
+      "city": "Delhi NCR",
+      "zone": "Noida, Greater Noida, Delhi, Gurugram, Ghaziabad and Faridabad",
+      "incentive_name": "Blinkit per-order payout structure (Rs 25 minimum)",
+      "incentive_type": "per_order_bonus",
+      "period_scope": "not_documented",
+      "earning_basis": "per_order",
+      "effective_from": "2022-01-01",
+      "effective_from_basis": "source_year_only",
+      "effective_to": "2023-04-27",
+      "effective_to_basis": "superseded_by_newer_source",
+      "per_order_amount": "25",
+      "other_conditions": [
+        "An extra Rs 2 for orders over 4 km",
+        "Rs 4 per order peak-hour incentive"
+      ],
+      "source_type": "reported_offer",
+      "source_tier": 2,
+      "evidence_class": "real_world_evidence",
+      "source_title": "Why hundreds of delivery partners in Delhi-NCR are on strike over Blinkit's new payout structure (ThePrint)",
+      "source_url": "https://theprint.in/economy/why-hundreds-of-delivery-partners-in-delhi-ncr-are-on-strike-over-blinkits-new-payout-structure/1540127/",
+      "source_publisher": "ThePrint",
+      "source_date": "2023-04-28",
+      "retrieved_on": "2026-10-08",
+      "source_reference": "ThePrint's report of 28 Apr 2023 on Blinkit's payout structures in Delhi-NCR",
+      "confidence": "0.55",
+      "confidence_label": "MEDIUM",
+      "evidence_status": "SUPERSEDED",
+      "verification_count": 1,
+      "conditions_complete": false,
+      "description": "The middle of three reported Blinkit payout structures: Rs 25 minimum per order, Rs 2 extra beyond 4 km, and a Rs 4 peak-hour incentive.",
+      "evidence": [
+        {
+          "field": "per_order_amount",
+          "quote": "the minimum compensation offered to them has been slashed to Rs 15 from Rs 25 per order",
+          "source_url": "https://theprint.in/economy/why-hundreds-of-delivery-partners-in-delhi-ncr-are-on-strike-over-blinkits-new-payout-structure/1540127/"
+        },
+        {
+          "field": "other_conditions",
+          "quote": "an extra Rs 2 for over 4 km",
+          "source_url": "https://theprint.in/economy/why-hundreds-of-delivery-partners-in-delhi-ncr-are-on-strike-over-blinkits-new-payout-structure/1540127/"
+        },
+        {
+          "field": "other_conditions",
+          "quote": "a Rs 4-per-order incentive during peak hours",
+          "source_url": "https://theprint.in/economy/why-hundreds-of-delivery-partners-in-delhi-ncr-are-on-strike-over-blinkits-new-payout-structure/1540127/"
+        }
+      ],
+      "notes": [
+        "Neither the start nor the end of this structure is dated by the source. The start is stored as a year only; it sat between the Rs 50 structure and the Rs 15 structure reported in April 2023.",
+        "Stored so that the version history is visible, not because its dates are known precisely.",
+        "Its start is placed at the beginning of 2022 for the same reason: the source gives no date for either boundary of this version."
+      ]
+    },
+    {
+      "rule_id": "blinkit-ncr-payout-v3@theprint-2023-04-28",
+      "program_id": "blinkit-ncr-per-order-payout",
+      "version": "reported-structure-2023-04",
+      "platform": "Blinkit",
+      "region": "Delhi NCR",
+      "region_level": "city",
+      "city": "Delhi NCR",
+      "zone": "Noida, Greater Noida, Delhi, Gurugram, Ghaziabad and Faridabad",
+      "incentive_name": "Blinkit per-order payout structure (Rs 15 minimum, April 2023)",
+      "incentive_type": "per_order_bonus",
+      "period_scope": "not_documented",
+      "earning_basis": "per_order",
+      "effective_from": "2023-04-28",
+      "effective_from_basis": "source_as_of_date",
+      "per_order_amount": "15",
+      "other_conditions": [
+        "Distance is calculated by GPS instead of a flat extra for orders beyond 4 km",
+        "The peak-hour per-order incentive is no longer paid",
+        "An attendance expectation of about nine hours each day was reported"
+      ],
+      "source_type": "reported_offer",
+      "source_tier": 2,
+      "evidence_class": "real_world_evidence",
+      "source_title": "Why hundreds of delivery partners in Delhi-NCR are on strike over Blinkit's new payout structure (ThePrint)",
+      "source_url": "https://theprint.in/economy/why-hundreds-of-delivery-partners-in-delhi-ncr-are-on-strike-over-blinkits-new-payout-structure/1540127/",
+      "source_publisher": "ThePrint",
+      "source_date": "2023-04-28",
+      "retrieved_on": "2026-10-08",
+      "source_reference": "ThePrint's report of 28 Apr 2023 on Blinkit's new payout structure in Delhi-NCR",
+      "confidence": "0.65",
+      "confidence_label": "MEDIUM",
+      "evidence_status": "OBSERVED",
+      "verification_count": 2,
+      "conditions_complete": false,
+      "description": "The payout structure Blinkit introduced in Delhi-NCR in April 2023, which riders struck over: Rs 15 minimum per order, GPS-based distance, and no peak-hour incentive.",
+      "evidence": [
+        {
+          "field": "per_order_amount",
+          "quote": "the minimum compensation offered to them has been slashed to Rs 15 from Rs 25 per order",
+          "source_url": "https://theprint.in/economy/why-hundreds-of-delivery-partners-in-delhi-ncr-are-on-strike-over-blinkits-new-payout-structure/1540127/"
+        },
+        {
+          "field": "other_conditions",
+          "quote": "implemented a new payout structure",
+          "source_url": "https://theprint.in/economy/why-hundreds-of-delivery-partners-in-delhi-ncr-are-on-strike-over-blinkits-new-payout-structure/1540127/",
+          "note": "Blinkit's own statement of 19 April, quoted in the report, says the structure compensates partners proportionally to the effort exerted."
+        },
+        {
+          "field": "other_conditions",
+          "quote": "nine hours each day",
+          "source_url": "https://theprint.in/economy/why-hundreds-of-delivery-partners-in-delhi-ncr-are-on-strike-over-blinkits-new-payout-structure/1540127/"
+        }
+      ],
+      "notes": [
+        "This is April 2023 evidence about Delhi-NCR. Blinkit's current rates are not documented by any source found, so no end date is stored.",
+        "It is a per-order rate structure, not an order-target incentive, so the order-count audit does not evaluate it."
+      ]
+    },
+    {
+      "rule_id": "blinkit-in-daily-incentive@play-2026-08-11",
+      "program_id": "blinkit-in-daily-incentive",
+      "version": "play-listing-2026-08-11",
+      "platform": "Blinkit",
+      "region": "India",
+      "region_level": "country",
+      "incentive_name": "Blinkit daily incentives (as advertised by Blinkit)",
+      "incentive_type": "daily_target",
+      "period_scope": "day",
+      "effective_from": "2026-08-11",
+      "effective_from_basis": "source_as_of_date",
+      "payout_timing": "Withdraw daily from the app's pocket, or weekly payouts",
+      "source_type": "official_platform_page",
+      "source_tier": 1,
+      "evidence_class": "real_world_evidence",
+      "source_title": "Blinkit Delivery Partner App - Google Play listing (developer: Blinkit)",
+      "source_url": "https://play.google.com/store/apps/details?id=app.blinkit.onboarding&hl=en_IN",
+      "source_publisher": "Blinkit",
+      "source_date": "2026-08-11",
+      "retrieved_on": "2026-10-08",
+      "source_reference": "Blinkit's Delivery Partner app listing, updated 11 Aug 2026",
+      "confidence": "0.9",
+      "confidence_label": "HIGH",
+      "evidence_status": "VERIFIED",
+      "verification_count": 1,
+      "conditions_complete": false,
+      "description": "Blinkit's own listing confirms additional daily incentives exist and states the payout timing. No target, reward or condition is published.",
+      "evidence": [
+        {
+          "field": "incentive_type",
+          "quote": "Earn up to ₹30,000 per month and additional daily incentives.",
+          "source_url": "https://play.google.com/store/apps/details?id=app.blinkit.onboarding&hl=en_IN"
+        },
+        {
+          "field": "payout_timing",
+          "quote": "Daily Payouts: Withdraw your earnings daily using the delivery partner app’s pocket feature or get weekly payouts",
+          "source_url": "https://play.google.com/store/apps/details?id=app.blinkit.onboarding&hl=en_IN"
+        }
+      ],
+      "inferences": [
+        {
+          "field": "target_orders",
+          "inferred_behaviour": "Third-party summaries report daily milestones around 18, 24 and 30 orders, and weight-based bonuses above about 8 kg. No platform, journalism or rider source corroborates these figures.",
+          "confidence_label": "LOW",
+          "basis": "Unbylined third-party SEO pages only (alphareach.tech); not used by the deterministic engine."
+        }
+      ],
+      "notes": [
+        "Blinkit's model is per-order and per-packet rather than order-target; its daily incentive terms are NOT_DOCUMENTED."
+      ]
+    },
+    {
+      "rule_id": "blinkit-in-surge-pay@play-2026-08-11",
+      "program_id": "blinkit-in-surge-pay",
+      "version": "play-listing-2026-08-11",
+      "platform": "Blinkit",
+      "region": "India",
+      "region_level": "country",
+      "incentive_name": "Blinkit surge pay (as advertised by Blinkit)",
+      "incentive_type": "per_order_bonus",
+      "period_scope": "not_documented",
+      "effective_from": "2026-08-11",
+      "effective_from_basis": "source_as_of_date",
+      "payout_timing": "Withdraw daily from the app's pocket, or weekly payouts",
+      "source_type": "official_platform_page",
+      "source_tier": 1,
+      "evidence_class": "real_world_evidence",
+      "source_title": "Blinkit Delivery Partner App - Google Play listing (developer: Blinkit)",
+      "source_url": "https://play.google.com/store/apps/details?id=app.blinkit.onboarding&hl=en_IN",
+      "source_publisher": "Blinkit",
+      "source_date": "2026-08-11",
+      "retrieved_on": "2026-10-08",
+      "source_reference": "Blinkit's Delivery Partner app listing, updated 11 Aug 2026",
+      "confidence": "0.9",
+      "confidence_label": "HIGH",
+      "evidence_status": "VERIFIED",
+      "verification_count": 1,
+      "conditions_complete": false,
+      "description": "Extra pay during high demand. When it applies and how much is not published.",
+      "evidence": [
+        {
+          "field": "incentive_type",
+          "quote": "Surge pay during high demand",
+          "source_url": "https://play.google.com/store/apps/details?id=app.blinkit.onboarding&hl=en_IN"
+        }
+      ],
+      "notes": [
+        "ThePrint's 2023 report that the Delhi-NCR peak-hour per-order incentive was withdrawn concerns a different, dated structure and does not contradict this standing statement."
+      ]
+    },
+    {
+      "rule_id": "blinkit-in-joining-bonus@play-2026-08-11",
+      "program_id": "blinkit-in-joining-bonus",
+      "version": "play-listing-2026-08-11",
+      "platform": "Blinkit",
+      "region": "India",
+      "region_level": "country",
+      "incentive_name": "Blinkit joining bonus",
+      "incentive_type": "joining_bonus",
+      "effective_from": "2026-08-11",
+      "effective_from_basis": "source_as_of_date",
+      "reward_text": "up to Rs. 6000*",
+      "source_type": "official_platform_page",
+      "source_tier": 1,
+      "evidence_class": "real_world_evidence",
+      "source_title": "Blinkit Delivery Partner App - Google Play listing (developer: Blinkit)",
+      "source_url": "https://play.google.com/store/apps/details?id=app.blinkit.onboarding&hl=en_IN",
+      "source_publisher": "Blinkit",
+      "source_date": "2026-08-11",
+      "retrieved_on": "2026-10-08",
+      "source_reference": "Blinkit's Delivery Partner app listing, updated 11 Aug 2026",
+      "confidence": "0.8",
+      "confidence_label": "MEDIUM",
+      "evidence_status": "VERIFIED",
+      "verification_count": 1,
+      "conditions_complete": false,
+      "description": "A joining bonus quoted as a ceiling. The asterisk points to terms that are not published.",
+      "evidence": [
+        {
+          "field": "reward_text",
+          "quote": "Referral rewards upto Rs. 14000* and joining bonus upto Rs. 6000*",
+          "source_url": "https://play.google.com/store/apps/details?id=app.blinkit.onboarding&hl=en_IN"
+        }
+      ],
+      "notes": [
+        "The '*' terms are not published on the listing, so the conditions are NOT_DOCUMENTED."
+      ]
+    },
+    {
+      "rule_id": "blinkit-in-referral-bonus@play-2026-08-11",
+      "program_id": "blinkit-in-referral-bonus",
+      "version": "play-listing-2026-08-11",
+      "platform": "Blinkit",
+      "region": "India",
+      "region_level": "country",
+      "incentive_name": "Blinkit referral rewards",
+      "incentive_type": "referral_bonus",
+      "effective_from": "2026-08-11",
+      "effective_from_basis": "source_as_of_date",
+      "reward_text": "up to Rs. 14000*",
+      "source_type": "official_platform_page",
+      "source_tier": 1,
+      "evidence_class": "real_world_evidence",
+      "source_title": "Blinkit Delivery Partner App - Google Play listing (developer: Blinkit)",
+      "source_url": "https://play.google.com/store/apps/details?id=app.blinkit.onboarding&hl=en_IN",
+      "source_publisher": "Blinkit",
+      "source_date": "2026-08-11",
+      "retrieved_on": "2026-10-08",
+      "source_reference": "Blinkit's Delivery Partner app listing, updated 11 Aug 2026",
+      "confidence": "0.8",
+      "confidence_label": "MEDIUM",
+      "evidence_status": "VERIFIED",
+      "verification_count": 1,
+      "conditions_complete": false,
+      "description": "Referral rewards quoted as a ceiling. The asterisk points to terms that are not published.",
+      "evidence": [
+        {
+          "field": "reward_text",
+          "quote": "Referral rewards upto Rs. 14000* and joining bonus upto Rs. 6000*",
+          "source_url": "https://play.google.com/store/apps/details?id=app.blinkit.onboarding&hl=en_IN"
+        }
+      ],
+      "notes": [
+        "The '*' terms are not published on the listing, so the conditions are NOT_DOCUMENTED."
+      ]
+    },
+    {
+      "rule_id": "uber-us-quest-trips@blog-2022-11-04",
+      "program_id": "uber-us-quest-trips",
+      "version": "how-quest-works-2022-11-04",
+      "platform": "UberEats",
+      "region": "United States",
+      "region_level": "country",
+      "incentive_name": "Uber Quest (trip count) for delivery people",
+      "incentive_type": "period_target",
+      "period_scope": "not_documented",
+      "earning_basis": "orders",
+      "effective_from": "2022-11-04",
+      "effective_from_basis": "source_as_of_date",
+      "effective_to": "2026-05-11",
+      "effective_to_basis": "superseded_by_newer_source",
+      "opt_in_required": true,
+      "other_conditions": [
+        "Complete the trips within the Quest's promotion period"
+      ],
+      "payout_timing": "Added to the Wallet soon after the goal is reached",
+      "source_type": "official_platform_page",
+      "source_tier": 1,
+      "evidence_class": "real_world_evidence",
+      "source_title": "How Quest works (Uber blog, United States)",
+      "source_url": "https://www.uber.com/us/en/blog/how-quest-works/",
+      "source_publisher": "Uber",
+      "source_date": "2022-11-04",
+      "retrieved_on": "2026-10-08",
+      "source_reference": "Uber's 'How Quest works' page (US), 4 Nov 2022",
+      "confidence": "0.85",
+      "confidence_label": "HIGH",
+      "evidence_status": "SUPERSEDED",
+      "verification_count": 1,
+      "conditions_complete": false,
+      "description": "Quest pays extra for completing a streak of trips in a promotion period. The number of trips, the reward and the period are set per Quest in the app.",
+      "evidence": [
+        {
+          "field": "incentive_type",
+          "quote": "Quest is a promotion that offers you the opportunity to earn extra when you complete a trip streak.",
+          "source_url": "https://www.uber.com/us/en/blog/how-quest-works/"
+        },
+        {
+          "field": "opt_in_required",
+          "quote": "You need to make sure you've opted into a Quest before it begins, or you'll miss out.",
+          "source_url": "https://www.uber.com/us/en/blog/how-quest-works/"
+        },
+        {
+          "field": "payout_timing",
+          "quote": "you'll soon see the extra amount added to your Wallet",
+          "source_url": "https://www.uber.com/us/en/blog/how-quest-works/"
+        },
+        {
+          "field": "other_conditions",
+          "quote": "Rides & Eats Quests count both rides trips and delivery trips towards the goal",
+          "source_url": "https://www.uber.com/us/en/blog/how-quest-works/",
+          "note": "Quoted for what counts towards the goal. The stored condition about the promotion period comes from Uber's later FAQ, not from this quote."
+        }
+      ],
+      "notes": [
+        "United States only. Uber Eats stopped operating in India on 21 January 2020, so this is never applied to an Indian rider.",
+        "Superseded for dates from 12 May 2026 by Uber's Delivery Quests FAQ. The end date is FairPay's, not Uber's."
+      ]
+    },
+    {
+      "rule_id": "uber-us-quest-trips@faq-2026-05-12",
+      "program_id": "uber-us-quest-trips",
+      "version": "delivery-quests-faq-2026-05-12",
+      "platform": "UberEats",
+      "region": "United States",
+      "region_level": "country",
+      "incentive_name": "Uber Quest (trip count) for delivery people",
+      "incentive_type": "period_target",
+      "period_scope": "not_documented",
+      "earning_basis": "orders",
+      "effective_from": "2026-05-12",
+      "effective_from_basis": "source_as_of_date",
+      "opt_in_required": true,
+      "other_conditions": [
+        "Meet all the goals of the Quest you signed up for",
+        "Complete the Quest within its active period"
+      ],
+      "source_type": "official_platform_page",
+      "source_tier": 1,
+      "evidence_class": "real_world_evidence",
+      "source_title": "Delivery Quests: frequently asked questions (Uber blog, United States)",
+      "source_url": "https://www.uber.com/us/en/blog/delivery-quests-frequently-asked-questions/",
+      "source_publisher": "Uber",
+      "source_date": "2026-05-12",
+      "retrieved_on": "2026-10-08",
+      "source_reference": "Uber's Delivery Quests FAQ (US), 12 May 2026",
+      "confidence": "0.85",
+      "confidence_label": "HIGH",
+      "evidence_status": "VERIFIED",
+      "verification_count": 1,
+      "conditions_complete": false,
+      "description": "Quest rewards completing a set number of trips within a timeframe. Targets, rewards and periods are set per Quest in the app.",
+      "evidence": [
+        {
+          "field": "incentive_type",
+          "quote": "This Quest rewards you for completing a set number of trips within a specific timeframe.",
+          "source_url": "https://www.uber.com/us/en/blog/delivery-quests-frequently-asked-questions/"
+        },
+        {
+          "field": "other_conditions",
+          "quote": "To receive your Quest payout, you'll need to meet all the goals of the Quest you've signed up for.",
+          "source_url": "https://www.uber.com/us/en/blog/delivery-quests-frequently-asked-questions/"
+        },
+        {
+          "field": "other_conditions",
+          "quote": "must still complete the Quest within the Quest's active period",
+          "source_url": "https://www.uber.com/us/en/blog/delivery-quests-frequently-asked-questions/"
+        },
+        {
+          "field": "opt_in_required",
+          "quote": "You can browse and sign up for available Quests directly in Opportunities within your Driver app.",
+          "source_url": "https://www.uber.com/us/en/blog/delivery-quests-frequently-asked-questions/"
+        },
+        {
+          "field": "min_acceptance_rate",
+          "quote": "Certain Quests are structured around completing trips with fewer declines",
+          "source_url": "https://www.uber.com/us/en/blog/delivery-quests-frequently-asked-questions/",
+          "note": "Applies to some Quests only and no threshold is published, so the acceptance requirement stays NOT_DOCUMENTED."
+        }
+      ],
+      "notes": [
+        "United States only. Uber Eats stopped operating in India on 21 January 2020."
+      ]
+    },
+    {
+      "rule_id": "uber-us-quest-earnings@blog-2024-06-28",
+      "program_id": "uber-us-quest-earnings",
+      "version": "quest-goals-2024-06-28",
+      "platform": "UberEats",
+      "region": "United States",
+      "region_level": "country",
+      "incentive_name": "Uber Quest (earnings goal)",
+      "incentive_type": "earnings_target",
+      "period_scope": "not_documented",
+      "earning_basis": "payout_amount",
+      "effective_from": "2024-06-28",
+      "effective_from_basis": "source_as_of_date",
+      "opt_in_required": true,
+      "other_conditions": [
+        "Counts toward the goal: upfront fare including adjustments before trip completion; upfront delivery tips up to $8; trip-level promotions (Surge, Boost+); multi-destination, rider-requested cancellation and wait-time earnings",
+        "Does not count: Quest earnings from previous periods; earnings guarantees; post-trip adjustments; tolls and airport fees; tips added after the trip; driver-requested cancellation earnings; cleaning fees"
+      ],
+      "payout_timing": "Added to the Wallet soon after the goal is reached",
+      "source_type": "official_platform_page",
+      "source_tier": 1,
+      "evidence_class": "real_world_evidence",
+      "source_title": "Quest goals (Uber blog, United States)",
+      "source_url": "https://www.uber.com/us/en/blog/quest-goals/",
+      "source_publisher": "Uber",
+      "source_date": "2024-06-28",
+      "retrieved_on": "2026-10-08",
+      "source_reference": "Uber's 'Quest goals' page (US), 28 Jun 2024",
+      "confidence": "0.85",
+      "confidence_label": "HIGH",
+      "evidence_status": "VERIFIED",
+      "verification_count": 1,
+      "conditions_complete": false,
+      "description": "A Quest variant whose goal is an earnings amount rather than a number of trips. The amount is set per Quest in the app.",
+      "evidence": [
+        {
+          "field": "incentive_type,earning_basis",
+          "quote": "Rather than having to reach a target number of trips to complete your Quest, you'll complete your Quest by reaching an earnings goal.",
+          "source_url": "https://www.uber.com/us/en/blog/quest-goals/"
+        },
+        {
+          "field": "other_conditions",
+          "quote": "Your Upfront Fare, including fare adjustments made before trip completion",
+          "source_url": "https://www.uber.com/us/en/blog/quest-goals/",
+          "note": "From the list of what counts towards the goal."
+        },
+        {
+          "field": "other_conditions",
+          "quote": "Driver-requested cancellation earnings",
+          "source_url": "https://www.uber.com/us/en/blog/quest-goals/",
+          "note": "From the list of what does not count."
+        },
+        {
+          "field": "opt_in_required",
+          "quote": "choose a Quest before it begins, or you'll miss out",
+          "source_url": "https://www.uber.com/us/en/blog/quest-goals/"
+        },
+        {
+          "field": "payout_timing",
+          "quote": "If you reach the goal, you'll soon see the extra amount added to your Wallet.",
+          "source_url": "https://www.uber.com/us/en/blog/quest-goals/"
+        }
+      ],
+      "notes": [
+        "United States only. The goal amount itself is NOT_DOCUMENTED because it is personalised per Quest."
+      ]
+    }
+  ]
+}

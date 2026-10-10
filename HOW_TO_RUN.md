@@ -1,105 +1,84 @@
-# How to Run FairPay Engine
+# How to run FairPay
 
-Docker runs the database, backend and website. The Telegram bot (optional)
-runs on your machine.
+Docker runs the database, backend and website. The Telegram bot is optional and runs on your machine.
 
-## Prerequisites
+## 1. You need
 
-- **Docker Desktop** (with Docker Compose v2.24 or newer): https://docs.docker.com/get-docker/
-  Check with `docker --version` and `docker compose version`.
-- **Git**
-- **Groq API key** (required): https://console.groq.com/keys
-  Your account must have access to `openai/gpt-oss-120b` and to the
-  image-capable model set in `FAIRPAY_VISION_MODEL` (default `qwen/qwen3.8-27b`).
-- **Telegram bot token** (only if you want Telegram document submission):
-  create a bot with [@BotFather](https://t.me/BotFather).
-- **Python 3.11+** (only to run the Telegram bot on your machine).
+| What | Where | For |
+|---|---|---|
+| Docker Desktop | [docker.com](https://docs.docker.com/get-docker/) | the stack |
+| Groq key (free) | [console.groq.com/keys](https://console.groq.com/keys) | reading screenshots |
+| Qdrant Cloud cluster (free) | [cloud.qdrant.io](https://cloud.qdrant.io) | incentive rules, labour laws |
+| Telegram bot token | [@BotFather](https://t.me/BotFather) | the bot (optional) |
+| NVIDIA key (free) | [build.nvidia.com](https://build.nvidia.com) | backup reader (optional) |
 
-Qdrant is **not** required; the audit uses the bundled local law file.
-
-## Setup
+## 2. Configure
 
 ```bash
 git clone https://github.com/Kishore-Gumu2no/compliance-auditor-api.git
 cd compliance-auditor-api
-
-# Create your configuration from the template
-copy .env.example .env        # Windows
-# cp .env.example .env        # macOS / Linux
+copy .env.example .env        # macOS/Linux: cp
 ```
 
-Open `.env` and fill in at least `GROQ_API_KEY`. For Telegram, also set
-`TELEGRAM_BOT_TOKEN` and `VITE_TELEGRAM_BOT_URL` (e.g. `https://t.me/<your_bot>`).
+In `.env`, fill in `GROQ_API_KEY`, `QDRANT_URL` and `QDRANT_API_KEY`. Never commit this file.
 
-`.env` is git-ignored and is never copied into Docker images. Never commit it.
-
-## Start
+## 3. Start
 
 ```bash
 docker compose --profile dev up --build
 ```
 
-The `--profile dev` flag is required; it starts the website. This starts:
+The first start is slow (the build can take 30–45 minutes, plus a ~400 MB model download). Bobby's 30-day history loads once and is kept.
 
-| Service | URL |
-|---|---|
-| Website | http://localhost:5173 |
-| Backend API | http://localhost:8000 |
-| API docs | http://localhost:8000/docs |
-| PostgreSQL | localhost:54322 (user `postgres`, password `postgres`) |
-| Supabase Studio | http://localhost:54323 |
+Website: http://localhost:5173 · API docs: http://localhost:8000/docs · Database: localhost:54322
 
-**First start takes a while:**
-- Building the backend image can take 30-45 minutes (Python dependencies).
-- On first start the backend downloads a ~400 MB language model for
-  personal-data redaction, so it needs internet access and a few minutes.
-- On first start the database is created and loaded automatically with the
-  schema and Bobby's 30-day dataset (341 orders). This happens only once,
-  when the `fairpay_pgdata` volume is new; later starts keep your data.
+## 4. Load the rules (once)
 
-## Verify
-
-- http://localhost:8000/docs opens the API documentation.
-- http://localhost:5173 shows **Live Earnings** with "Live stream active".
-- Click **Discover how you can earn more** to run the 30-day audit for Bobby.
-
-## Telegram bot (optional)
-
-Start it after the Docker stack is running, from a separate terminal:
+FairPay reads rules and laws **only** from Qdrant. With the stack running, in a second terminal:
 
 ```bash
 python -m venv .venv
-.venv\Scripts\activate            # Windows
-# source .venv/bin/activate       # macOS / Linux
+.venv\Scripts\activate         # macOS/Linux: source .venv/bin/activate
 pip install -r Backend/requirements.txt
-
 cd Backend
-python telegram_bot.py
+python incentive_kb_ingest.py  # incentive rules
+python law_kb_ingest.py        # labour laws
 ```
 
-The bot reads the root `.env` and connects to the database on
-`localhost:54322`. Screenshot OCR on your machine needs Tesseract installed;
-set `TESSERACT_PATH` in `.env` if it is not on the default path.
+Safe to repeat: nothing already in Qdrant is overwritten. To change a law, edit it in Qdrant or add a new version with `law_kb_ingest.py --laws file.json`.
 
-In Telegram: send `/link bobby`, send your earnings screenshots or PDFs, type
-the platform name (e.g. `Zomato`), then tap **PLEASE AUDIT**. The result
-appears on the website under **Audit Results**.
+## 5. Check it works
+
+Open the website and press **Check your 30 day audit**. The results appear under **Audit Results**.
+
+## Telegram bot (optional)
+
+Add `TELEGRAM_BOT_TOKEN` to `.env`, install [Tesseract](https://github.com/UB-Mannheim/tesseract/wiki), then run `python telegram_bot.py` from `Backend`.
+
+In Telegram: `/start`, `/link bobby`, pick an option, send screenshots, name the app, tap **PLEASE AUDIT**. Also: `/status`, `/clear`, `/unlink` (forget this chat and your results).
+
+## When the free AI reader runs out
+
+Groq's free tier covers about five incentive checks a day. FairPay waits out the per-minute limit by itself. When the day's allowance is gone it switches to a slower free reader if `NVIDIA_API_KEY` is set, and warns the partner. Without the key it says so and checks nothing, rather than answer from a half-read day.
+
+## Tests
+
+```bash
+cd Backend
+python -m pytest                                                # stack running, Qdrant loaded
+python synthetic_verification.py --data-root ../synthetic_data  # scores 20 partners with known answers
+```
 
 ## Stop
 
-```bash
-docker compose --profile dev stop
-```
-
-This keeps your database. Do **not** use `docker compose down -v` unless you
-want to delete the database volume; it is recreated and reseeded on the
-next start.
+`docker compose --profile dev stop` keeps your data. Avoid `down -v`: it deletes the database.
 
 ## Troubleshooting
 
-- **Backend keeps restarting with `GroqError`:** `GROQ_API_KEY` is missing
-  from `.env`.
-- **Website loads but shows no data:** make sure the backend is healthy:
-  `docker compose ps`.
-- **Port already in use (8000 / 5173 / 54322):** stop any local backend,
-  Vite dev server or database using that port, then start again.
+| Problem | Fix |
+|---|---|
+| Backend restarts with `GroqError` | `GROQ_API_KEY` is missing from `.env` |
+| `SUPABASE_KEY is not set` | run `copy .env.example .env` |
+| "Rules could not be established" or "no legal check" | do step 4 |
+| Website says "Demo mode" | open it at exactly `localhost`, not `127.0.0.1` or an IP |
+| Port 8000, 5173 or 54322 busy | stop what is using it, start again |

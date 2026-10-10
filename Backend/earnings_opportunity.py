@@ -41,17 +41,31 @@ from real_data import conn, load_partner_profile  # reuse the existing connectio
 SCENARIO_TYPES = ("hours", "days", "expenses")
 
 # Shown above the simulator when the documents cannot support a projection.
+# Working time is never estimated: without dated evidence there is no baseline.
 UNKNOWN_HOURS_AND_DAYS = (
-    "Number of hours and days worked by the delivery partner is unknown "
-    "therefore simulation not possible"
+    "We don't have enough evidence to calculate your working hours or the days you worked."
 )
-UNKNOWN_HOURS = (
-    "Number of hours worked by the delivery partner is unknown "
-    "therefore simulation not possible"
-)
+UNKNOWN_HOURS = "We don't have enough evidence to calculate your working hours."
 UNKNOWN_DAYS = (
-    "Number of days worked by the delivery partner is unknown "
-    "therefore simulation not possible"
+    "We don't have enough evidence to work out which days you worked and what you earned on them."
+)
+SAMPLE_ONLY = (
+    "A spot check covers only a sample of your orders, so it cannot show what you earn "
+    "per hour or per day."
+)
+TOTALS_ONLY = (
+    "A settlement check compares totals only, so it does not show what you earned on each "
+    "day or how many hours you worked."
+)
+
+# What would make a simulation possible, shown with each refusal.
+_NEED_WORK_TIME = (
+    "Screenshots that show your login, online or shift time with the date - either a time "
+    "range (for example 11:00 AM - 3:00 PM) or a duration (for example 6h 20m) for each day."
+)
+_NEED_DAILY_EARNINGS = (
+    "Your order earnings for those same days, each with its date, together with the "
+    "payments for them (a full audit)."
 )
 
 # Telegram evidence often covers only a few days, so the days scenario is
@@ -173,7 +187,22 @@ def load_earnings_baseline(partner_id: str) -> Dict[str, Any]:
         "evidence_label": "your past 30 days",
         "cost_note": "Only fuel and energy costs recorded in your history are counted.",
         "baseline_notes": [],
+        "evidence_needed": [],
+        "value_sources": [
+            _source("Days worked", "observed", "Days with orders in your 30-day history."),
+            _source("Online hours", "observed", "Online hours recorded in your history."),
+            _source("Earnings", "observed", "Income received in your history."),
+            _source("Earnings per hour", "calculated", "Earnings divided by online hours."),
+            _source("Fuel or energy cost", "calculated", "Recorded in your history from distance and your cost per km."),
+            _source("Extra hours earn your average rate", "assumption", "Used by the projections, not by the baseline."),
+        ],
     }
+
+
+def _source(label: str, kind: str, detail: str) -> Dict[str, str]:
+    """One baseline value and where it came from: observed, calculated,
+    assumption or unavailable."""
+    return {"label": label, "kind": kind, "detail": detail}
 
 
 # ---------------------------------------------------------------------------
@@ -232,6 +261,22 @@ def load_telegram_baseline(
     those orders, and the working time printed on the documents. Only days
     that show both earnings and working time are used.
     """
+    unavailable: Dict[str, Any] = {
+        "partner_id": partner_id,
+        "source": "telegram",
+        "submission_id": submission_id,
+        "simulation_possible": False,
+        "value_sources": [],
+    }
+    # A sample or a pair of totals cannot stand in for daily earnings.
+    mode = merged.get("evidence_mode")
+    if mode == "contract_spot_check":
+        return {**unavailable, "days_with_earnings": None, "unavailable_message": SAMPLE_ONLY,
+                "evidence_needed": [_NEED_DAILY_EARNINGS, _NEED_WORK_TIME]}
+    if mode == "settlement_reconciliation":
+        return {**unavailable, "days_with_earnings": None, "unavailable_message": TOTALS_ONLY,
+                "evidence_needed": [_NEED_DAILY_EARNINGS, _NEED_WORK_TIME]}
+
     transactions = {t.get("transaction_id"): t for t in merged.get("transactions") or []}
     income_by_day: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
     orders_by_day: Dict[str, int] = defaultdict(int)
@@ -267,19 +312,18 @@ def load_telegram_baseline(
                 minutes_by_day[day] = (minutes, estimated, overlapped)
     used_days = [day for day in days_with_earnings if day in minutes_by_day]
 
-    unavailable: Dict[str, Any] = {
-        "partner_id": partner_id,
-        "source": "telegram",
-        "submission_id": submission_id,
-        "simulation_possible": False,
-        "days_with_earnings": len(days_with_earnings),
-    }
+    unavailable["days_with_earnings"] = len(days_with_earnings)
     if not days_with_earnings and not work_by_day:
-        return {**unavailable, "unavailable_message": UNKNOWN_HOURS_AND_DAYS}
+        return {**unavailable, "unavailable_message": UNKNOWN_HOURS_AND_DAYS,
+                "evidence_needed": [_NEED_WORK_TIME, _NEED_DAILY_EARNINGS]}
     if not days_with_earnings:
-        return {**unavailable, "unavailable_message": UNKNOWN_DAYS}
+        return {**unavailable, "unavailable_message": UNKNOWN_DAYS,
+                "evidence_needed": [_NEED_DAILY_EARNINGS]}
     if not used_days:
-        return {**unavailable, "unavailable_message": UNKNOWN_HOURS}
+        return {**unavailable, "unavailable_message": UNKNOWN_HOURS,
+                "evidence_needed": [
+                    _NEED_WORK_TIME.replace("for each day.", "for the days your orders are dated."),
+                ]}
 
     total_income = sum((income_by_day[d] for d in used_days), Decimal("0"))
     total_minutes = sum(minutes_by_day[d][0] for d in used_days)
@@ -349,6 +393,22 @@ def load_telegram_baseline(
         "evidence_label": "the documents you sent",
         "cost_note": "Fuel cost is estimated from the distances on your documents and your petrol cost per km.",
         "baseline_notes": notes,
+        "evidence_needed": [],
+        "value_sources": [
+            _source("Days worked", "observed", f"{days_worked} dated day(s) on your documents with both earnings and working time."),
+            _source(
+                "Working hours",
+                "assumption" if estimated_days else "observed",
+                "Login or online time printed on your documents"
+                + (f"; on {estimated_days} day(s) only totals were shown and the longest was used." if estimated_days else "."),
+            ),
+            _source("Earnings", "observed", "Order earnings printed on your documents for those days."),
+            _source("Earnings per hour", "calculated", "Earnings divided by working hours."),
+            _source("Fuel cost", "calculated", "Printed distance x the petrol cost per km in your FairPay profile.")
+            if operating_cost is not None
+            else _source("Fuel cost", "unavailable", cost_reason or "Not shown on your documents."),
+            _source("Extra hours earn your average rate", "assumption", "Used by the projections, not by the baseline."),
+        ],
     }
 
 
@@ -510,6 +570,251 @@ def debate_state_from_opportunity(
         f"Assumptions: {' '.join(projection['assumptions']['notes'])}"
     )
     return {"scenario": scenario, "calculations": calculations}
+
+
+# ---------------------------------------------------------------------------
+# Hours worked, per platform (for the audit result display)
+# ---------------------------------------------------------------------------
+# Two different things, never mixed up:
+# * online hours - time logged in, from login/work sessions. A partner is often
+#   online on several apps at once, so shared sessions cannot be split by app.
+# * order hours  - time spent on one app's orders, from order accepted to
+#   delivered. Overlapping orders on the same app count once.
+
+def _platform_key(name: str) -> str:
+    return "".join(ch for ch in (name or "").lower() if ch.isalnum())
+
+
+def _hours(minutes: float) -> str:
+    return str(_rate(Decimal(str(minutes)) / Decimal(60)).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
+
+
+def _union_seconds(intervals: List[Tuple[float, float]]) -> float:
+    total, current_start, current_end = 0.0, None, 0.0
+    for start, end in sorted(intervals):
+        if current_start is None or start > current_end:
+            if current_start is not None:
+                total += current_end - current_start
+            current_start, current_end = start, end
+        else:
+            current_end = max(current_end, end)
+    if current_start is not None:
+        total += current_end - current_start
+    return total
+
+
+def history_hours_by_platform(partner_id: str, platforms: List[str]) -> Dict[str, Any]:
+    """Hours worked from the 30-day history: order hours per app, online hours overall."""
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            "SELECT platform, order_timestamp, completed_timestamp FROM orders WHERE partner_id = %s",
+            (partner_id,),
+        )
+        orders = cur.fetchall()
+        cur.execute(
+            "SELECT session_date, online_start, online_end FROM work_sessions WHERE partner_id = %s",
+            (partner_id,),
+        )
+        sessions = cur.fetchall()
+
+    by_platform: Dict[str, List[Tuple[float, float]]] = defaultdict(list)
+    days_by_platform: Dict[str, set] = defaultdict(set)
+    for row in orders:
+        start, end = row["order_timestamp"], row["completed_timestamp"]
+        if start and end and end > start:
+            key = _platform_key(row["platform"])
+            by_platform[key].append((start.timestamp(), end.timestamp()))
+            days_by_platform[key].add(start.date())
+
+    online_seconds = _union_seconds(
+        [(s["online_start"].timestamp(), s["online_end"].timestamp()) for s in sessions
+         if s["online_start"] and s["online_end"]]
+    )
+    online_days = len({s["session_date"] for s in sessions})
+
+    rows = []
+    for platform in platforms:
+        key = _platform_key(platform)
+        intervals = by_platform.get(key) or []
+        rows.append({
+            "platform": platform,
+            "order_hours": _hours(_union_seconds(intervals) / 60) if intervals else None,
+            "order_hours_note": (
+                "From order accepted to delivered, on the dates of your orders."
+                if intervals else "No order times are recorded for this app."
+            ),
+            "online_hours": None,
+            "online_hours_note": (
+                "Your login time is shared by all apps you were online on at the same time, "
+                "so it cannot be split by app."
+            ),
+            "days": len(days_by_platform.get(key) or []),
+        })
+    return {
+        "source": "history",
+        "platforms": rows,
+        "all_apps_online_hours": _hours(online_seconds / 60) if sessions else None,
+        "all_apps_online_days": online_days,
+        "all_apps_note": (
+            "Total time logged in across all apps (overlapping time counted once)."
+            if sessions else "No login sessions are recorded."
+        ),
+    }
+
+
+def work_time_hours_by_platform(work_time: List[Dict[str, Any]], platforms: List[str]) -> Dict[str, Any]:
+    """Hours worked from a Telegram audit: login time printed on each app's own documents.
+
+    Uses the same per-day rule as the simulator baseline (login ranges merged,
+    longest printed total when only totals are shown). Never estimated.
+    """
+    def _total(entries: List[Dict[str, Any]]) -> Tuple[int, int, bool]:
+        by_day: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+        for entry in entries:
+            if entry.get("date") and entry.get("minutes"):
+                by_day[entry["date"]].append(entry)
+        minutes, estimated = 0, False
+        for day_entries in by_day.values():
+            day_minutes, day_estimated, _ = _minutes_for_day(day_entries)
+            minutes += day_minutes
+            estimated = estimated or day_estimated
+        return minutes, len(by_day), estimated
+
+    rows = []
+    for platform in platforms:
+        entries = [e for e in work_time if _platform_key(e.get("platform", "")) == _platform_key(platform)]
+        minutes, days, estimated = _total(entries)
+        rows.append({
+            "platform": platform,
+            "online_hours": _hours(minutes) if minutes else None,
+            "online_hours_note": (
+                ("Login or online time shown on your documents."
+                 + (" Where only a total was shown, that total was used." if estimated else ""))
+                if minutes else
+                "Not available: your documents for this app do not show login or online hours with dates."
+            ),
+            "order_hours": None,
+            "order_hours_note": "Your documents do not show when each order started and ended.",
+            "days": days,
+        })
+    all_minutes, all_days, _ = _total(work_time)
+    return {
+        "source": "telegram",
+        "platforms": rows,
+        "all_apps_online_hours": _hours(all_minutes) if all_minutes else None,
+        "all_apps_online_days": all_days,
+        "all_apps_note": (
+            "Login time from all your documents, with time on two apps at once counted once."
+            if all_minutes else "Not available: no login or online hours with dates were found in your documents."
+        ),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Figures a typed "what if" scenario can be measured against
+# ---------------------------------------------------------------------------
+
+def _figure(label: str, value: Any, money: bool = True) -> Dict[str, Any]:
+    return {"label": label, "value": _dec(value), "money": money}
+
+
+def load_scenario_figures(
+    partner_id: str,
+    platform: str,
+    submission_id: Optional[str] = None,
+    merged: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """The partner's real numbers, named so a scenario can be turned into a sum.
+
+    Returns ``{"figures": {name: {label, value, money}}, "period": str | None}``.
+    Only observed or already-calculated values are included; a missing number
+    is simply absent.
+    """
+    figures: Dict[str, Dict[str, Any]] = {}
+    period: Optional[str] = None
+    try:
+        baseline = load_telegram_baseline(partner_id, submission_id, merged) if merged is not None \
+            else load_earnings_baseline(partner_id)
+    except Exception:
+        baseline = {"simulation_possible": False}
+    if baseline.get("simulation_possible"):
+        period = f"{baseline['days_worked']} days ({baseline['period_start']} to {baseline['period_end']})"
+        figures.update({
+            "total_income": _figure("Total earnings, all apps", baseline["total_income"]),
+            "days_worked": _figure("Days worked", baseline["days_worked"], money=False),
+            "total_orders": _figure("Orders, all apps", baseline["total_orders"], money=False),
+            "total_online_hours": _figure("Hours online, all apps", baseline["total_online_hours"], money=False),
+            "avg_hours_per_day": _figure("Average hours online per day", baseline["avg_hours_per_day"], money=False),
+            "avg_income_per_day": _figure("Average earnings per day", baseline["avg_income_per_day"]),
+            "income_per_hour": _figure("Average earnings per hour online", baseline["income_per_hour"]),
+        })
+        if baseline.get("total_operating_cost") is not None:
+            figures["total_fuel_cost"] = _figure("Fuel or energy cost, all apps", baseline["total_operating_cost"])
+
+    key = _platform_key(platform)
+    if merged is None:
+        try:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(
+                    "SELECT platform, SUM(net_amount) AS income, COUNT(*) AS orders "
+                    "FROM earnings WHERE partner_id = %s GROUP BY platform",
+                    (partner_id,),
+                )
+                for row in cur.fetchall():
+                    if _platform_key(row["platform"]) == key:
+                        figures["platform_income"] = _figure(f"Earnings on {platform}", row["income"])
+                        figures["platform_orders"] = _figure(f"Orders on {platform}", row["orders"], money=False)
+                cur.execute(
+                    "SELECT platform, incentive_type, SUM(amount) AS total FROM incentives "
+                    "WHERE partner_id = %s GROUP BY platform, incentive_type",
+                    (partner_id,),
+                )
+                for row in cur.fetchall():
+                    if _platform_key(row["platform"]) == key:
+                        kind = row["incentive_type"]
+                        figures[f"platform_{kind}_incentives"] = _figure(
+                            f"{kind.replace('_', ' ').capitalize()} incentives on {platform}", row["total"]
+                        )
+                cur.execute(
+                    "SELECT platform, category, SUM(amount) AS total FROM deductions "
+                    "WHERE partner_id = %s GROUP BY platform, category",
+                    (partner_id,),
+                )
+                for row in cur.fetchall():
+                    if _platform_key(row["platform"]) == key:
+                        figures[f"platform_{row['category']}_deductions"] = _figure(
+                            f"{row['category'].capitalize()} deductions on {platform}", row["total"]
+                        )
+        except Exception:
+            conn.rollback()
+    else:
+        transactions = {t.get("transaction_id"): t for t in merged.get("transactions") or []}
+        income, orders, incentives = Decimal("0"), 0, Decimal("0")
+        for prediction in merged.get("reconciliation_predictions") or []:
+            if prediction.get("anomaly_type") == "extra_unexplained_settlement":
+                continue
+            if _platform_key(prediction.get("platform", "")) != key:
+                continue
+            income += _dec(prediction.get("expected_amount"))
+            orders += 1
+            tx = transactions.get(prediction.get("transaction_id")) or {}
+            incentives += sum((_dec(i.get("amount")) for i in tx.get("incentives") or []), Decimal("0"))
+        if orders:
+            figures["platform_income"] = _figure(f"Earnings on {platform} in your documents", income)
+            figures["platform_orders"] = _figure(f"Orders on {platform} in your documents", orders, money=False)
+            if incentives > 0:
+                figures["platform_incentives"] = _figure(f"Incentives on {platform} in your documents", incentives)
+    return {"figures": figures, "period": period}
+
+
+def describe_figures(figures: Dict[str, Dict[str, Any]]) -> str:
+    """Figures as plain lines for the LLM prompts (name, meaning, value)."""
+    if not figures:
+        return "No earnings figures are available for this partner."
+    return "\n".join(
+        f"{name}: {f['label']} = {_rs(f['value']) if f['money'] else f['value']}"
+        for name, f in figures.items()
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -8,14 +8,14 @@ WHY USE THIS: Usually when you write a function, let's say Audit, if we gotta us
                by ANOTHER PIECE OF CODE (functions) and not the programmer.
 
 HOW DOES IT WORK: Now that th programmer has no right to call the function independently, then how will this function be called? It will
-                 called by another PIECE OF CODE (functions). Example: In this file we have got ' @server.post("/audit/") ', what this
+                 called by another PIECE OF CODE (functions). Example: In this file we have got ' @server.post("/audit/synthetic") ', what this
                  means is:
-                    1. The function below this line, Audit, is marked as a special function, saying that it cannot be called by the
+                    1. The function below this line, synthetic_audit_endpoint, is marked as a special function, saying that it cannot be called by the
                        programmer anymore in this file.
-                    2. Audit function's control of calling is handed over to server, i.e an instant of the FastAPI program, which means,
+                    2. synthetic_audit_endpoint's control of calling is handed over to server, i.e an instant of the FastAPI program, which means,
                        THE CONTROL IS BEING HANDED OVER TO ANOTHER PIECE OF CODE.
-                    3. The ' .post("/audit/") ' here is the trigger, if any user visits a website such as https://www.linkedin.com and
-                       clicks the "AUDIT" button, it redirects to https://www.linkedin.com/audit/ and this is when our async Audit function
+                    3. The ' .post("/audit/synthetic") ' here is the trigger, if any user visits a website such as https://www.linkedin.com and
+                       clicks the "AUDIT" button, it redirects to https://www.linkedin.com/audit/synthetic and this is when our async function
                        gets triggered or called.
 """
 
@@ -23,21 +23,19 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException, WebSocket, UploadFile, File, WebSocketDisconnect, Form
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ValidationError, Field
 from orchestrator import run_audit
 from database import supabase_db
-from models import PartnerProfile, ContractVersion
 from audit_context import serialize_audit_state, debate_state_from_audit_context
 from real_data import load_partner_history_from_db
 import json
 import asyncio
-import hashlib
-import os
-from typing import List, Annotated, Set, Dict, Any, Optional
+from decimal import Decimal
+from typing import List, Set, Dict, Any, Optional
 
-from debate import run_debate
+from debate import run_debate, summarize_scenario
 
 class CounterfactualScenario(BaseModel):
     """Payload for a what-if scenario."""
@@ -45,42 +43,19 @@ class CounterfactualScenario(BaseModel):
     description: str = Field(..., description="Natural-language description of the scenario")
     audit_context: Optional[Dict[str, Any]] = Field(
         default=None,
-        description="Sanitized audit context from a completed /audit/ response",
+        description="Sanitized audit context (counterfactual_context) from a completed audit",
     )
 
 
 class CounterfactualResult(BaseModel):
-    """Combined output of the three personas."""
-    synthesis: str = Field(..., description="Combined narrative")
+    """A one-sentence summary first; the three personas are the detail behind it."""
+    synthesis: str = Field(..., description="Ultra-simple one-sentence summary of the scenario's effect")
     realist: str = Field(..., description="Realist analysis")
     optimist: str = Field(..., description="Optimist analysis")
     pessimist: str = Field(..., description="Pessimist analysis")
-
-
-def _parse_partner_profile(raw: str) -> PartnerProfile:
-    try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=422, detail="partner_profile must be valid JSON.") from exc
-    try:
-        return PartnerProfile.model_validate(payload)
-    except ValidationError as exc:
-        raise HTTPException(status_code=422, detail=exc.errors()) from exc
-
-
-def _parse_contract_versions(raw: str) -> List[ContractVersion]:
-    if not raw or raw.strip() in ("", "[]"):
-        return []
-    try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=422, detail="contract_versions must be valid JSON.") from exc
-    if not isinstance(payload, list):
-        raise HTTPException(status_code=422, detail="contract_versions must be a JSON array.")
-    try:
-        return [ContractVersion.model_validate(item) for item in payload]
-    except ValidationError as exc:
-        raise HTTPException(status_code=422, detail=exc.errors()) from exc
+    direction: Optional[str] = Field(default=None, description="increase, decrease, no_change or unclear")
+    estimated_change: Optional[Decimal] = Field(default=None, description="Rupee change, computed from the partner's figures")
+    calculation: Optional[str] = Field(default=None, description="How the rupee change was computed")
 
 
 async def run_delivery_streams():
@@ -209,76 +184,8 @@ class StreamData(BaseModel):
     platform: str
     earnings: int
 
-@server.post("/audit/")
-async def Audit(
-    partner_profile: Annotated[str, Form(description="JSON PartnerProfile payload")],
-    platform: Annotated[str, Form(description="Primary platform for document extraction hints")],
-    contract_versions: Annotated[str, Form(description="JSON array of ContractVersion objects")] = "[]",
-    images: Annotated[list[UploadFile] | None, File()] = None,
-    pdfs: Annotated[list[UploadFile] | None, File()] = None,
-):
-    """Upload images/PDFs with explicit partner context and run the real audit pipeline."""
-    if images is None:
-        images = []
-    if pdfs is None:
-        pdfs = []
-    if not images and not pdfs:
-        raise HTTPException(status_code=400, detail="At least one PDF or image is required.")
-    if len(images) > 20:
-        raise HTTPException(status_code=400, detail="Too many images !!")
-    if len(pdfs) > 5:
-        raise HTTPException(status_code=400, detail="Too many PDFs !!")
-
-    profile = _parse_partner_profile(partner_profile)
-    versions = _parse_contract_versions(contract_versions)
-
-    saved_paths: list[str] = []
-    saved_pdf_paths: list[str] = []
-    saved_image_paths: list[str] = []
-    try:
-        for pdf in pdfs:
-            file_bytes = await pdf.read()
-            hasher_pdf = hashlib.sha256()
-            hasher_pdf.update(file_bytes)
-            file_hash = hasher_pdf.hexdigest()
-            path = f"temp_{file_hash}.pdf"
-            with open(path, "wb") as pdf_obj:
-                pdf_obj.write(file_bytes)
-            saved_paths.append(path)
-            saved_pdf_paths.append(path)
-
-        for image in images:
-            image_bytes = await image.read()
-            hasher_img = hashlib.sha256()
-            hasher_img.update(image_bytes)
-            img_hash = hasher_img.hexdigest()
-            path = f"temp_{img_hash}.png"
-            with open(path, "wb") as image_obj:
-                image_obj.write(image_bytes)
-            saved_paths.append(path)
-            saved_image_paths.append(path)
-
-        ai_result = run_audit(
-            partner_id=profile.partner_id,
-            partner_profile=profile,
-            pdf_paths=saved_pdf_paths,
-            image_paths=saved_image_paths,
-            platform=platform,
-            contract_versions=versions,
-        )
-    finally:
-        for path in saved_paths:
-            if os.path.exists(path):
-                os.remove(path)
-
-    serialized = serialize_audit_state(ai_result)
-    if serialized.get("status") == "error":
-        raise HTTPException(status_code=422, detail=serialized.get("error") or "Audit failed.")
-
-    return {
-        "status": "Audit Complete",
-        "ai_analysis": serialized,
-    }
+# Documents are submitted only through the Telegram bot (telegram_bot.py ->
+# telegram_audit.run_submission_audit). There is no document upload endpoint.
 
 @server.websocket("/stream")
 async def ingest_stream(websocket: WebSocket):
@@ -328,29 +235,63 @@ async def ingest_stream(websocket: WebSocket):
 async def simulate_counterfactual(scenario: CounterfactualScenario) -> CounterfactualResult:
     """Run a single counter‑factual debate for the supplied scenario using structured audit context."""
     if scenario.audit_context is None:
-        raise HTTPException(status_code=422, detail="audit_context is required. Provide the counterfactual_context from a completed /audit/ response.")
+        raise HTTPException(status_code=422, detail="audit_context is required. Provide the counterfactual_context from a completed audit.")
 
+    figures = _scenario_figures(scenario.audit_context, scenario.platform)
+    figures_text = describe_figures(figures["figures"])
     initial_state = debate_state_from_audit_context(
         audit_context=scenario.audit_context,
         platform=scenario.platform,
         description=scenario.description,
+        figures_text=figures_text,
     )
     final_state = await run_debate(initial_state)
+    impact = await summarize_scenario(
+        f"On {scenario.platform}: {scenario.description}",
+        figures["figures"],
+        figures_text,
+        figures.get("days"),
+        {k: final_state.get(k, "") for k in ("realist", "optimist", "pessimist")},
+    )
     return CounterfactualResult(
-        synthesis=final_state.get("synthesis", ""),
+        synthesis=impact["summary"],
         realist=final_state.get("realist", ""),
         optimist=final_state.get("optimist", ""),
         pessimist=final_state.get("pessimist", ""),
+        direction=impact.get("direction"),
+        estimated_change=impact.get("amount"),
+        calculation=impact.get("calculation"),
     )
 
-# ---------- Earnings Opportunity Simulator ----------
-from decimal import Decimal
 
+def _scenario_figures(audit_context: Dict[str, Any], platform: str) -> Dict[str, Any]:
+    """The partner's real numbers for a typed scenario; empty when unavailable."""
+    partner_id = audit_context.get("partner_id")
+    if not partner_id:
+        return {"figures": {}, "days": None}
+    merged = None
+    if audit_context.get("source") == "telegram" and audit_context.get("submission_id"):
+        try:
+            merged = telegram_store.get_submission_result(partner_id, audit_context["submission_id"])
+        except Exception:
+            merged = None
+        if merged is None:
+            return {"figures": {}, "days": None}
+    result = load_scenario_figures(partner_id, platform, audit_context.get("submission_id"), merged)
+    days = result["figures"].get("days_worked")
+    result["days"] = int(days["value"]) if days else None
+    return result
+
+# ---------- Earnings Opportunity Simulator ----------
 from earnings_opportunity import (
     SCENARIO_TYPES,
     compute_opportunity,
     debate_state_from_opportunity,
+    describe_figures,
     fetch_simulations,
+    history_hours_by_platform,
+    load_scenario_figures,
+    work_time_hours_by_platform,
     insert_simulation,
     load_earnings_baseline,
     load_telegram_baseline,
@@ -375,6 +316,10 @@ class EarningsBaseline(BaseModel):
     expenses_available: bool = True
     expenses_unavailable_reason: Optional[str] = None
     baseline_notes: List[str] = []
+    # What would make a refused simulation possible.
+    evidence_needed: List[str] = []
+    # Each baseline value and whether it was observed, calculated, assumed or unavailable.
+    value_sources: List[Dict[str, str]] = []
     period_start: Optional[str] = None
     period_end: Optional[str] = None
     days_worked: Optional[int] = None
@@ -545,17 +490,6 @@ async def list_simulations(partner_id: str) -> List[SavedSimulation]:
 import telegram_store
 
 
-@server.get("/telegram/submissions/{partner_id}")
-async def list_telegram_submissions(partner_id: str):
-    """Summaries of this partner's Telegram submissions, newest first."""
-    try:
-        return telegram_store.list_submissions(partner_id)
-    except Exception as exc:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to load Telegram submissions: {exc}"
-        ) from exc
-
-
 @server.get("/telegram/submissions/{partner_id}/latest")
 async def latest_telegram_submission(partner_id: str):
     """The newest completed Telegram audit for this partner, with its results.
@@ -575,6 +509,17 @@ async def latest_telegram_submission(partner_id: str):
     # Audits saved before the simulator wiring lack this; derive it from the
     # stored per-platform results so they unlock "How to Earn More" too.
     merged = latest.get("merged_result")
+    if merged and merged.get("evidence_mode") == "incentive_audit":
+        # The incentive check is shown on its own; it does not feed the
+        # earnings simulator or the full-audit result views.
+        merged["submission_id"] = latest["submission_id"]
+        return {
+            "status": "Audit Complete",
+            "submission": {k: v for k, v in latest.items() if k not in ("merged_result", "results_by_platform")},
+            # The stored facts stay server-side; the page gets the results only.
+            "ai_analysis": {k: v for k, v in merged.items() if k != "incentive_evidence"},
+            "results_by_platform": None,
+        }
     if merged and not merged.get("counterfactual_context"):
         from telegram_audit import build_merged_counterfactual_context
         merged["counterfactual_context"] = build_merged_counterfactual_context(
@@ -583,6 +528,12 @@ async def latest_telegram_submission(partner_id: str):
     if merged and merged.get("counterfactual_context") is not None:
         # Lets "Earn More" simulate from this Telegram audit's own documents.
         merged["counterfactual_context"]["submission_id"] = latest["submission_id"]
+    if merged:
+        # Derived on read so audits saved earlier show hours worked too.
+        merged["hours_worked"] = work_time_hours_by_platform(
+            merged.get("work_time") or [],
+            (merged.get("partner_metadata") or {}).get("platforms") or [],
+        )
     return {
         "status": "Audit Complete",
         "submission": {k: v for k, v in latest.items() if k not in ("merged_result", "results_by_platform")},
@@ -647,6 +598,17 @@ async def audit_partner_history(partner_id: str):
         "name": db_data["partner_profile"].name,
         "platforms": db_data.get("platforms", []),
     }
+    # Rich per-order history is the full-audit path (here, the synthetic
+    # demonstration dataset) - not what a partner can normally supply.
+    serialized["evidence_mode"] = "full_audit"
+    serialized["evidence_mode_label"] = "Full Audit"
+    serialized["evidence_source"] = "demonstration_history"
+    try:
+        serialized["hours_worked"] = history_hours_by_platform(
+            db_data["partner_id"], db_data.get("platforms", [])
+        )
+    except Exception as exc:
+        serialized["hours_worked"] = {"error": f"Hours worked could not be loaded: {exc}"}
 
     return {
         "status": "Audit Complete",
@@ -654,24 +616,74 @@ async def audit_partner_history(partner_id: str):
     }
 
 
-# ---------- Batch audit endpoint ----------
-from batch_audit import run_batch_audit
+# ---------- Incentive audit: "Why didn't I get my incentive?" ----------
+# Separate from the full audit above: it never runs run_audit and its result is
+# never merged into contract, legal or economic findings. Every count and
+# condition is recomputed here from the evidence on the server.
+from datetime import date as _date
+from typing import Literal
 
-class BatchPartnerSpec(BaseModel):
-    partner_id: str
-    partner_profile: Dict[str, Any]
-    pdf_paths: List[str] = []
-    image_paths: List[str] = []
-    platform: str = "unknown"
-    contract_versions: List[Any] = []
+from audit_context import _json_safe
+from incentive_audit import build_incentive_report
+from incentive_evidence import IncentiveEvidence, load_history_evidence
+from incentive_fit import FULL_AUDIT_FIT_DAYS, INCENTIVE_CHECK_FIT_DAYS
+from incentive_rules import default_store
 
-@server.post("/audit/batch")
-async def batch_audit_endpoint(specs: List[BatchPartnerSpec]):
-    """Run audits for many partners concurrently and return their final states."""
-    # Convert Pydantic models to plain dicts for the batch runner.
-    partner_specs = [spec.dict() for spec in specs]
-    results = await run_batch_audit(partner_specs)
-    return results
+
+class IncentiveAuditRequest(BaseModel):
+    partner_id: str = Field(..., description="Delivery partner identifier")
+    source: Literal["history", "telegram"] = Field(
+        default="history",
+        description="history: the partner's records on file; telegram: a completed Telegram incentive check",
+    )
+    submission_id: Optional[str] = Field(default=None, description="Required when source is telegram")
+    platform: Optional[str] = Field(default=None, description="Only this platform")
+    period_date: Optional[_date] = Field(default=None, description="A date inside the incentive period the partner means")
+    incentive_type: Optional[Literal["daily_target", "weekly_target", "period_target"]] = None
+
+
+def _incentive_evidence_for(req: IncentiveAuditRequest) -> IncentiveEvidence:
+    if req.source == "history":
+        try:
+            return load_history_evidence(req.partner_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if not req.submission_id:
+        raise HTTPException(status_code=422, detail="submission_id is required when source is telegram.")
+    try:
+        merged = telegram_store.get_submission_result(req.partner_id, req.submission_id)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail="Telegram submission not found for this partner.") from exc
+    stored = (merged or {}).get("incentive_evidence")
+    if not stored:
+        if (merged or {}).get("details_purged"):
+            # Deleted once the partner was shown the result; only the outcome is kept.
+            raise HTTPException(
+                status_code=410,
+                detail=("The trip details of this submission were deleted after you were shown the result. "
+                        "Send the day's trips again on Telegram to check another incentive for it."),
+            )
+        raise HTTPException(status_code=404, detail="This Telegram submission has no incentive evidence.")
+    # Stored are the normalised facts read off the documents (no raw files);
+    # every result is recomputed from them.
+    return IncentiveEvidence.model_validate(stored)
+
+
+@server.post("/audit/incentive")
+async def audit_incentive(req: IncentiveAuditRequest):
+    """Why didn't I get my incentive? Then, separately, which structure fits better."""
+    evidence = _incentive_evidence_for(req)
+    # The 30-day audit (records on file) compares five days; a Telegram
+    # "Didn't get your incentive?" check compares only the one day sent.
+    fit_days = FULL_AUDIT_FIT_DAYS if req.source == "history" else INCENTIVE_CHECK_FIT_DAYS
+    try:
+        report = await asyncio.to_thread(
+            build_incentive_report, evidence, default_store(), req.platform, req.period_date, req.incentive_type,
+            fit_days,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Incentive audit failed: {exc}") from exc
+    return {"status": "Incentive Audit Complete", **_json_safe(report)}
 
 
 # ---------- Synthetic Data Batch endpoint ----------

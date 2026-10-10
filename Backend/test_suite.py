@@ -1,4 +1,5 @@
 import httpx
+import pytest
 import asyncio
 import websockets
 import json
@@ -10,67 +11,26 @@ import sys
 # --- CONFIGURATION ---
 BASE_URL = "http://127.0.0.1:8000"
 WS_URL = "ws://127.0.0.1:8000/stream"
-# We'll use files from the Experimental_files folder for testing
-PDF_TEST_FILE = "Experimental_files/dummy.pdf"
-IMAGE_TEST_FILE = "Experimental_files/dummy.png"
 
-async def test_audit_endpoint():
-    print("\n--- Testing /audit/ Endpoint ---")
+
+async def _check_no_document_upload_endpoint():
+    """Documents are submitted only through the Telegram bot, so the website
+    API must not accept PDF or image uploads."""
+    print("\n--- Checking that /audit/ no longer accepts documents ---")
     async with httpx.AsyncClient(timeout=30.0) as client:
-        # Prepare unique files for upload to ensure unique hashes
-        timestamp = int(time.time())
-        temp_pdf = f"temp_test_{timestamp}.pdf"
-        temp_img = f"temp_test_{timestamp}.png"
-        
-        files = []
         try:
-            if os.path.exists(PDF_TEST_FILE):
-                with open(PDF_TEST_FILE, "rb") as f:
-                    content = f.read()
-                # Append timestamp to content to change hash
-                with open(temp_pdf, "wb") as f:
-                    f.write(content + f"\nTimestamp: {timestamp}".encode())
-                files.append(("pdfs", (temp_pdf, open(temp_pdf, "rb"), "application/pdf")))
-                
-            if os.path.exists(IMAGE_TEST_FILE):
-                # For images, we just copy the file as adding text might break it, 
-                # but the PDF change is enough to change the overall audit result hash if both are used.
-                # Actually, let's just use the timestamp in the filename, 
-                # though orchestrator.py uses file content for hashing (via pdfplumber/pytesseract).
-                # To be sure, we'll just rely on the PDF content change.
-                with open(IMAGE_TEST_FILE, "rb") as f:
-                    content = f.read()
-                with open(temp_img, "wb") as f:
-                    f.write(content)
-                files.append(("images", (temp_img, open(temp_img, "rb"), "image/png")))
-            
-            if not files:
-                print("❌ Error: No test files found in Experimental_files/")
-                return False
-
-            print(f"Uploading {len(files)} files (unique run {timestamp})...")
+            files = [("pdfs", ("probe.pdf", b"%PDF-1.4 probe", "application/pdf"))]
             response = await client.post(f"{BASE_URL}/audit/", files=files)
-            
-            if response.status_code == 200:
-                result = response.json()
-                print("✅ Audit Success!")
-                print(f"Status: {result.get('status')}")
-                print(f"AI Result: {result.get('ai_analysis', {}).get('final_status', 'No status found')}")
-                return True
-            else:
-                print(f"❌ Audit Failed with status {response.status_code}: {response.text}")
-                return False
         except Exception as e:
-            print(f"❌ Connection error during Audit: {e}")
+            print(f"❌ Connection error: {e}")
             return False
-        finally:
-            # Close file handles and cleanup
-            for _, (_, f_obj, _) in files:
-                f_obj.close()
-            if os.path.exists(temp_pdf): os.remove(temp_pdf)
-            if os.path.exists(temp_img): os.remove(temp_img)
+    if response.status_code in (404, 405):
+        print(f"✅ Upload rejected ({response.status_code}); submission is Telegram-only.")
+        return True
+    print(f"❌ Unexpected status {response.status_code}: {response.text[:200]}")
+    return False
 
-async def test_websocket_stream():
+async def _check_websocket_stream():
     print("\n--- Testing WebSocket Stream ---")
     try:
         async with websockets.connect(WS_URL) as ws:
@@ -78,14 +38,38 @@ async def test_websocket_stream():
             print(f"Sending payload: {payload}")
             await ws.send(json.dumps(payload))
             
-            response = await ws.recv()
-            print(f"✅ WebSocket Response: {response}")
-            if "Logged earnings" in response:
-                return True
+            # The sender is also a connected client, so the broadcast of the
+            # logged earnings arrives first and the confirmation meant for the
+            # sender comes after it. Read on until the confirmation shows up.
+            for _ in range(5):
+                response = await asyncio.wait_for(ws.recv(), timeout=10.0)
+                print(f"WebSocket message: {response}")
+                if "Logged earnings" in response:
+                    print("✅ The stream confirmed the earnings it was sent.")
+                    return True
+            print("❌ The stream never confirmed the earnings.")
             return False
     except Exception as e:
         print(f"❌ WebSocket connection failed: {e}")
         return False
+
+async def _server_is_up() -> bool:
+    return await wait_for_port_async(8000, timeout=1.0)
+
+
+async def test_no_document_upload_endpoint():
+    """Fails the suite if the website API starts accepting document uploads again."""
+    if not await _server_is_up():
+        pytest.skip("the backend is not running on 127.0.0.1:8000")
+    assert await _check_no_document_upload_endpoint(), "the website API accepted a document upload"
+
+
+async def test_websocket_stream():
+    """Fails the suite if the live earnings stream stops answering."""
+    if not await _server_is_up():
+        pytest.skip("the backend is not running on 127.0.0.1:8000")
+    assert await _check_websocket_stream(), "the WebSocket stream did not confirm the earnings it was sent"
+
 
 async def wait_for_port_async(port, host="127.0.0.1", timeout=70.0):
     start_time = time.time()
@@ -123,12 +107,12 @@ async def main():
     else:
         print("✅ Server is up and listening on port 8000!")
     
-    results = {"Audit": False, "WebSocket": False}
+    results = {"No web upload": False, "WebSocket": False}
     
     try:
         # 2. Run Tests
-        results["Audit"] = await test_audit_endpoint()
-        results["WebSocket"] = await test_websocket_stream()
+        results["No web upload"] = await _check_no_document_upload_endpoint()
+        results["WebSocket"] = await _check_websocket_stream()
     finally:
         # 3. Shutdown Server
         print("\n🛑 Shutting down test server...")

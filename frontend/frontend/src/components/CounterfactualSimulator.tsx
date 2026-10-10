@@ -18,6 +18,8 @@ interface Synthesis {
   realist: string;
   optimist: string;
   pessimist: string;
+  direction?: string | null;
+  calculation?: string | null;
 }
 
 interface CounterfactualSimulatorProps {
@@ -211,6 +213,7 @@ export const CounterfactualSimulator: React.FC<CounterfactualSimulatorProps> = (
     try {
       const res = await simulate_counterfactual({ platform, description, audit_context: auditContext });
       setResult(res);
+      setShowPersonas(false); // details stay behind "Show Detailed Analysis"
       setOpportunity(null);
       setActiveTab('scenario');
     } catch (error) {
@@ -282,10 +285,21 @@ export const CounterfactualSimulator: React.FC<CounterfactualSimulatorProps> = (
             <span className="simulation-unavailable-icon" aria-hidden="true">⚠️</span>
             <div>
               <p className="simulation-unavailable-title">{baseline.unavailable_message}</p>
-              <p className="simulation-unavailable-hint">
-                Send screenshots that show your login or online hours, with their dates, to the
-                FairPay bot and run the audit again.
-              </p>
+              {baseline.evidence_needed && baseline.evidence_needed.length > 0 ? (
+                <>
+                  <p className="simulation-unavailable-hint">
+                    FairPay does not estimate working hours. To simulate, send the FairPay bot:
+                  </p>
+                  <ul className="simulation-unavailable-hint evidence-needed-list">
+                    {baseline.evidence_needed.map((item, idx) => <li key={idx}>{item}</li>)}
+                  </ul>
+                </>
+              ) : (
+                <p className="simulation-unavailable-hint">
+                  Send screenshots that show your login or online hours, with their dates, to the
+                  FairPay bot and run the audit again.
+                </p>
+              )}
             </div>
           </div>
         )}
@@ -333,6 +347,19 @@ export const CounterfactualSimulator: React.FC<CounterfactualSimulatorProps> = (
                       ? `Based on the documents you sent through Telegram (${baseline.days_worked} day(s) with working hours).`
                       : 'Based on your last 30 days of work history.'}
                   </p>
+                )}
+                {canSimulate && baseline?.value_sources && baseline.value_sources.length > 0 && (
+                  <details className="audit-details value-sources">
+                    <summary>Where these numbers come from</summary>
+                    <ul>
+                      {baseline.value_sources.map((source) => (
+                        <li key={source.label}>
+                          <span className={`value-kind value-kind-${source.kind}`}>{source.kind}</span>{' '}
+                          <strong>{source.label}</strong> — {source.detail}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
                 )}
                 <div className="tab-group scenario-group" role="tablist">
                   {(Object.keys(SCENARIO_LABELS) as ScenarioType[]).map((type) => (
@@ -529,7 +556,7 @@ export const CounterfactualSimulator: React.FC<CounterfactualSimulatorProps> = (
                 <div className="empty-icon">📋</div>
                 <h4>Audit Required</h4>
                 <p>Complete an audit first to generate the context needed for simulation.</p>
-                <p className="empty-hint">Upload evidence in the Evidence Upload section, then run an audit to unlock this simulator.</p>
+                <p className="empty-hint">Send your evidence through the FairPay Telegram bot and run an audit to unlock this simulator.</p>
               </div>
             )}
             {result && !error && (
@@ -617,13 +644,20 @@ export const CounterfactualSimulator: React.FC<CounterfactualSimulatorProps> = (
                 {!opportunity && (
                   <div className="financial-summary">
                     <h4 className="result-subtitle">Summary</h4>
-                    <p className="explanation">
-                      {result.synthesis ? (
-                        <ReactMarkdown>{result.synthesis}</ReactMarkdown>
-                      ) : (
-                        'No summary available.'
-                      )}
+                    {/* One simple sentence; the three views stay under "Show Detailed Analysis". */}
+                    <p
+                      className={`scenario-summary${
+                        result.direction === 'increase' ? ' is-up' : result.direction === 'decrease' ? ' is-down' : ''
+                      }`}
+                    >
+                      {result.synthesis || 'No summary available.'}
                     </p>
+                    {result.calculation && (
+                      <p className="explanation scenario-calculation">
+                        How we got this: {result.calculation}. This is an estimate from your own past numbers,
+                        not guaranteed income.
+                      </p>
+                    )}
                   </div>
                 )}
 

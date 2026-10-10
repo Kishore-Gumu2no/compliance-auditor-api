@@ -176,62 +176,33 @@ class _RelevanceResult:
         self.notes = notes
 
 
-# Strict law concept definitions - maps legal concepts to keywords in full_text
-# Each concept has an evidence requirement function that MUST return True for a match
-# CONSERVATIVE: concepts are specific to law provisions, not generic keywords
-# A law MUST be in the allowed list for that concept to trigger
-# Each law_id appears in EXACTLY ONE concept to prevent cross-matching
-LAW_CONCEPTS = {
-    "minimum_wage": {
-        # Code on Wages Section 5: employer shall not pay less than minimum wage
-        # Trigger ONLY when business_hourly_rate < min_wage_benchmark with actual payment shortfall
-        # Does NOT apply to missing_payment (no payment at all) or contractual approximation gaps.
-        "keywords": ["minimum wage", "wage floor", "minimum rate", "not less than"],
-        "requires": lambda ev: False,  # Gate moved to economic concern layer - legal finding only if economic layer flags min_wage
-        "law_ids": ["code_wages_2019_section_5"],
-    },
-    "overtime": {
-        "keywords": ["overtime", "extra hours", "beyond normal hours", "twice the normal"],
-        "requires": lambda ev: (ev.has_distance and ev.distance_km > Decimal("20")) or (ev.has_wait_time and ev.wait_time_minutes > 60),
-        "law_ids": ["code_wages_2019_section_14"],
-    },
-    "deduction_notice": {
-        # Karnataka Gig Act Section 15: where payments deducted, must inform reasons
-        # Trigger ONLY for incorrect_deduction anomaly (unsupported deduction > tolerance)
-        "keywords": ["deduction", "inform", "reasons for deduction", "invoice"],
-        "requires": lambda ev: ev.anomaly_type == "incorrect_deduction",
-        "law_ids": ["karnataka_gig_act_section_15"],
-    },
-    "payout_cycle": {
-        # Disabled - too generic
-        "keywords": ["payout cycle", "payment cycle", "timely payment"],
-        "requires": lambda ev: False,
-        "law_ids": [],
-    },
-    "wage_protection": {
-        # Code on Wages Section 18: deductions from wages only when authorised
-        # Trigger ONLY for incorrect_deduction anomaly (unauthorised deduction)
-        "keywords": ["deductions", "authorised", "wages", "deductions from wages"],
-        "requires": lambda ev: ev.anomaly_type == "incorrect_deduction",
-        "law_ids": ["code_wages_2019_section_18"],
-    },
-    "incentive_bonus": {
-        # A missing incentive does not, on its own, establish that a payment
-        # was deducted or that the statutory invoice/notice was absent.  The
-        # current transaction model has no deduction-notice evidence field.
-        "keywords": ["income security", "deducted", "inform", "reasons for deduction", "invoice", "payout", "payouts must follow the contract"],
-        "requires": lambda ev: False,
-        "law_ids": ["karnataka_gig_act_section_15"],
-    },
-    "payment_recording": {
-        # Karnataka Gig Act Section 21 / Rule 20: payment recording/reporting
-        # A duplicate payment is not evidence that a payment record was
-        # omitted, inaccurate, or not reported.  The current transaction
-        # model has no record/reporting-failure evidence field.
-        "keywords": ["recorded", "reported", "payment and welfare fee", "verification system", "transaction-level payment"],
-        "requires": lambda ev: False,
-        "law_ids": ["karnataka_gig_act_section_21", "karnataka_gig_rules_2025_rule_20"],
-    },
+# Legal concepts and the transaction evidence each one needs.
+#
+# Which provision covers which concept, and the words in its text that show
+# it, come from the law's own document in Qdrant (LegalBasis.concepts, see
+# law_store.py) - not from this file. A provision is matched to a concept only
+# when its document lists that concept, its text contains one of the listed
+# words, AND the transaction carries the evidence below. CONSERVATIVE: the
+# evidence checks are deliberately narrow.
+CONCEPT_EVIDENCE = {
+    # Code on Wages s.5 in the seed. The gate sits in the economic concern
+    # layer: a legal finding only if that layer flags the minimum wage.
+    "minimum_wage": lambda ev: False,
+    "overtime": lambda ev: (ev.has_distance and ev.distance_km > Decimal("20")) or (ev.has_wait_time and ev.wait_time_minutes > 60),
+    # Only for an incorrect_deduction anomaly (unsupported deduction > tolerance).
+    "deduction_notice": lambda ev: ev.anomaly_type == "incorrect_deduction",
+    # Disabled - too generic.
+    "payout_cycle": lambda ev: False,
+    # Deductions from wages only when authorised: incorrect_deduction anomaly only.
+    "wage_protection": lambda ev: ev.anomaly_type == "incorrect_deduction",
+    # A missing incentive does not, on its own, establish that a payment was
+    # deducted or that the statutory invoice/notice was absent. The current
+    # transaction model has no deduction-notice evidence field.
+    "incentive_bonus": lambda ev: False,
+    # A duplicate payment is not evidence that a payment record was omitted,
+    # inaccurate, or not reported. The current transaction model has no
+    # record/reporting-failure evidence field.
+    "payment_recording": lambda ev: False,
 }
 
 
@@ -393,7 +364,6 @@ def _evaluate_law_relevance(
     applicability = law.applicability_category.lower()
     statute = law.statute.lower()
     section = law.section.lower()
-    law_id = law.law_id.lower() if law.law_id else ""
 
     # Check applicability category - must match worker type
     is_gig_applicable = "gig_worker" in applicability or "platform_worker" in applicability
@@ -409,15 +379,13 @@ def _evaluate_law_relevance(
         )
         return _RelevanceResult(False, Decimal("0.0"), [], notes)
 
-    # Match specific legal concepts in provision text to transaction signals
-    for concept, config in LAW_CONCEPTS.items():
-        keywords = config["keywords"]
-        requires_fn = config["requires"]
-        allowed_law_ids = config.get("law_ids", [])
-
-        # If concept has specific law_ids, this law must be one of them
-        if allowed_law_ids and law_id not in allowed_law_ids:
-            continue
+    # Match the concepts the law's own document lists (from Qdrant) to
+    # transaction signals, in the fixed order of CONCEPT_EVIDENCE.
+    for concept, requires_fn in CONCEPT_EVIDENCE.items():
+        keywords = [kw.lower() for entry in (law.concepts or []) if entry.get("concept") == concept
+                    for kw in entry.get("keywords") or []]
+        if not keywords:
+            continue  # this provision does not cover this concept
 
         # Check if provision text actually contains the concept keywords
         if not any(kw in text for kw in keywords):
@@ -542,10 +510,22 @@ def _build_risk_narrative(law: LegalBasis, perspective: str, relevance: _Relevan
 # Economic Concern Analysis
 # ============================================================
 
+def _minimum_wage_from_laws(laws: List[Any]) -> Optional[Decimal]:
+    """The hourly minimum wage set by a provision in force for the trip, if any (from Qdrant)."""
+    for law in laws or []:
+        if not any(entry.get("concept") == "minimum_wage" for entry in (law.concepts or [])):
+            continue
+        value = (law.parameters or {}).get("minimum_wage_hourly")
+        if value is not None:
+            return Decimal(str(value))
+    return None
+
+
 def analyze_economic_concerns(
     business_cost_calculations: List[BusinessCostCalculation],
     transactions: List[TransactionRecord],
-    payment_calculations: Optional[List[PaymentCalculation]] = None
+    payment_calculations: Optional[List[PaymentCalculation]] = None,
+    applicable_laws_per_tx: Optional[List[Dict[str, Any]]] = None,
 ) -> List[EconomicConcernFinding]:
     """
     Evidence-based economic concern analysis.
@@ -559,13 +539,16 @@ def analyze_economic_concerns(
     """
     findings = []
 
-    # Benchmarks (reference only - not triggers by themselves)
+    # Benchmarks (reference only - not triggers by themselves). These two are
+    # FairPay's economic reference figures, not law. The minimum wage is law:
+    # it comes from the provision in force for each trip (Qdrant).
     contracted_benchmark = Decimal("600")
     market_benchmark = Decimal("800")
-    min_wage_benchmark = Decimal("650")
+    laws_by_tx = {entry.get("transaction_id"): entry.get("laws", []) for entry in (applicable_laws_per_tx or [])}
 
     for i, (calc, tx) in enumerate(zip(business_cost_calculations, transactions)):
         business_rate = calc.business_hourly_rate
+        min_wage_benchmark = _minimum_wage_from_laws(laws_by_tx.get(tx.transaction_id, []))
 
         # A duration is essential to an hourly calculation.  Do not convert
         # absent duration data (or a zero/negative result) into economic
@@ -583,7 +566,8 @@ def analyze_economic_concerns(
 
         gap_contracted = max(Decimal("0"), (contracted_benchmark - business_rate) / contracted_benchmark * Decimal("100"))
         gap_market = max(Decimal("0"), (market_benchmark - business_rate) / market_benchmark * Decimal("100"))
-        gap_min_wage = max(Decimal("0"), (min_wage_benchmark - business_rate) / min_wage_benchmark * Decimal("100"))
+        gap_min_wage = (max(Decimal("0"), (min_wage_benchmark - business_rate) / min_wage_benchmark * Decimal("100"))
+                        if min_wage_benchmark else None)
 
         # Compare the actual settlement with the independently recorded
         # earning.  A contract estimate or a benchmark comparison is not
@@ -599,8 +583,9 @@ def analyze_economic_concerns(
 
         # A low rate becomes a finding only when the same transaction has a
         # documented settlement shortfall.  Benchmarks remain contextual.
+        # No provision in force sets a minimum wage for this trip: no comparison.
         min_wage_violation = (
-            business_rate < min_wage_benchmark and has_documented_shortfall
+            min_wage_benchmark is not None and business_rate < min_wage_benchmark and has_documented_shortfall
         )
 
         # Only generate if there's genuine evidence of economic harm

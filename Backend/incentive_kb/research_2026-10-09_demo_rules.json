@@ -1,0 +1,43 @@
+{
+  "about": "FairPay demonstration rule for the hackathon, NOT research. It is labelled as demonstration_dataset so the engine and the rider are always told it does not come from Uber Eats. Uber Eats does not operate in India (it left on 21 Jan 2020). This rule exists only to show the engine flagging a condition that was not met.",
+  "not_ingested": [],
+  "rules": [
+    {
+      "rule_id": "ubereats-blr-daily-earnings-600@fairpay-demo-2026-10-09",
+      "program_id": "ubereats-blr-daily-earnings-target",
+      "version": "fairpay-demo-2026-10-09",
+      "platform": "UberEats",
+      "region": "Bengaluru",
+      "region_level": "city",
+      "city": "Bengaluru",
+      "incentive_name": "Uber Eats daily earnings target",
+      "incentive_type": "daily_target",
+      "period_scope": "day",
+      "earning_basis": "payout_amount",
+      "effective_from": "2026-10-01",
+      "effective_from_basis": "documented",
+      "target_payout_amount": "600",
+      "source_type": "synthetic",
+      "source_tier": 1,
+      "evidence_class": "demonstration_dataset",
+      "source_title": "FairPay hackathon demonstration rule: Uber Eats daily earnings target",
+      "source_url": "fairpay-demo://incentive-rules/ubereats-blr-daily-earnings-600",
+      "source_publisher": "FairPay (demonstration dataset)",
+      "source_date": "2026-10-09",
+      "retrieved_on": "2026-10-09",
+      "source_reference": "FairPay demonstration rule (Uber Eats, Bengaluru)",
+      "confidence": "1",
+      "confidence_label": "HIGH",
+      "evidence_status": "VERIFIED",
+      "verification_count": 1,
+      "conditions_complete": true,
+      "description": "Demonstration rule: the day's delivered orders must add up to at least Rs 600 in earnings (customer tips are not counted). No order target and no reward amount are set.",
+      "evidence": [],
+      "inferences": [],
+      "notes": [
+        "Added on 2026-10-09 for the hackathon demo of a condition that is not met.",
+        "No reward amount is defined for this demonstration rule."
+      ]
+    }
+  ]
+}

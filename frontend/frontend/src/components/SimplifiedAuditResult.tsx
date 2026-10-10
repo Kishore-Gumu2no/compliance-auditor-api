@@ -1,5 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { formatCurrency, auditNumber } from '../services/demoData';
+import type { EvidenceLimit, SettlementReconciliation, SpotCheck } from '../services/api';
+import { ContractQuestions, CouldNotCheck, HoursWorkedView, SettlementReconciliationView, SpotCheckView } from './EvidenceModeResult';
 
 interface ReconciliationPrediction {
   transaction_id: string;
@@ -277,6 +279,34 @@ const SimplifiedAuditResult: React.FC<SimplifiedAuditResultProps> = ({
     actions.push('Keep your screenshots and payment records as proof.');
   }
 
+  // Which kind of evidence this result rests on (see backend evidence_modes.py).
+  const analysis = uploadResult?.ai_analysis;
+  const evidenceMode: string | undefined =
+    analysis?.evidence_mode ?? (analysis?.source === 'telegram' ? 'full_audit' : undefined);
+  const inPlatform = (p?: string | null) => activePlatform === 'All' || !p || p === activePlatform;
+  const settlementResults: SettlementReconciliation[] = (analysis?.settlement_reconciliation ?? [])
+    .filter((r: SettlementReconciliation) => inPlatform(r.platform));
+  const spotChecks: SpotCheck[] = (analysis?.spot_check ?? []).filter((c: SpotCheck) => inPlatform(c.platform));
+  // FairPay picks how each app's files are checked; one result can hold more
+  // than one kind (e.g. totals for one app, single orders for another).
+  const modesByPlatform: Record<string, string> = analysis?.evidence_modes ?? {};
+  const platformMode = activePlatform !== 'All' ? modesByPlatform[activePlatform] : undefined;
+  const showTotals = evidenceMode === 'settlement_reconciliation' || settlementResults.length > 0;
+  const showSpotCheck = evidenceMode === 'contract_spot_check'
+    && (platformMode === undefined || platformMode === 'contract_spot_check');
+  const showOrders = evidenceMode !== 'settlement_reconciliation' && evidenceMode !== 'contract_spot_check'
+    && platformMode !== 'settlement_reconciliation';
+  const questions = (analysis?.contract_questions ?? []).filter((q: { platform: string }) => inPlatform(q.platform));
+  const limits: EvidenceLimit[] = analysis?.could_not_check ?? [];
+  const modeNotes: string[] = analysis?.mode_notes ?? [];
+
+  let modeTitle = 'Earnings Audit';
+  if (evidenceMode === 'settlement_reconciliation') modeTitle = 'Settlement Reconciliation';
+  else if (evidenceMode === 'contract_spot_check') {
+    const checked = spotChecks.reduce((sum, c) => sum + c.sample_orders_checked, 0);
+    modeTitle = `Contract Spot Check — ${checked} ${plural(checked, 'order', 'orders')} checked`;
+  } else if (evidenceMode === 'full_audit') modeTitle = 'Full Audit';
+
   // Get partner info
   let partnerName = 'Delivery Partner';
   let auditPeriod = 'N/A';
@@ -301,14 +331,22 @@ const SimplifiedAuditResult: React.FC<SimplifiedAuditResultProps> = ({
         auditPeriod = minDate.getTime() === maxDate.getTime() ? fmt(minDate) : `${fmt(minDate)} – ${fmt(maxDate)}`;
       }
     }
+    const periods = settlementResults.filter(r => r.period_start);
+    if (periods.length > 0) {
+      const start = periods.map(r => r.period_start as string).sort()[0];
+      const end = periods.map(r => r.period_end as string).sort().slice(-1)[0];
+      auditPeriod = start === end ? formatDate(start) : `${formatDate(start)} – ${formatDate(end)}`;
+    }
   }
 
-  const visibleRows = showAllRows ? rows : rows.slice(0, ROW_LIMIT);
+  // Only orders that were not paid correctly are listed; correct ones are counted.
+  const problemRows = rows.filter(r => r.tone !== 'good');
+  const visibleRows = showAllRows ? problemRows : problemRows.slice(0, ROW_LIMIT);
 
   return (
     <div className="simplified-audit-result">
       <div className="audit-result-header">
-        <h3>FairPay — Earnings Audit</h3>
+        <h3>FairPay — {modeTitle}</h3>
         <div className="audit-meta-simple">
           <div><strong>Partner:</strong> {partnerName}</div>
           <div>
@@ -332,6 +370,13 @@ const SimplifiedAuditResult: React.FC<SimplifiedAuditResultProps> = ({
         </div>
       </div>
 
+      {/* Hours worked: all apps, or the app picked in the filter above */}
+      {analysis && <HoursWorkedView hours={analysis.hours_worked} platform={activePlatform} />}
+
+      {showTotals && <SettlementReconciliationView results={settlementResults} />}
+      {showSpotCheck && <SpotCheckView checks={spotChecks} />}
+
+      {showOrders && (<>
       {/* 1. The answer, in one sentence */}
       <div className={`audit-verdict tone-${tone}`} role="status">
         <span className={`audit-badge tone-${tone}`}>{status}</span>
@@ -376,10 +421,23 @@ const SimplifiedAuditResult: React.FC<SimplifiedAuditResultProps> = ({
         </div>
       )}
 
-      {/* 3. Order by order */}
-      {rows.length > 0 && (
+      {/* 3. Order by order - only the orders with a problem */}
+      {rows.length > 0 && problemRows.length === 0 && (
         <div className="audit-section">
           <h4>Order by order</h4>
+          <p className="evidence-mode-caption">
+            All {rows.length} {plural(rows.length, 'order was', 'orders were')} paid correctly, so none are listed here.
+          </p>
+        </div>
+      )}
+      {problemRows.length > 0 && (
+        <div className="audit-section">
+          <h4>Order by order</h4>
+          <p className="evidence-mode-caption">
+            {problemRows.length} of {rows.length} {plural(rows.length, 'order', 'orders')} had a problem.
+            The other {rows.length - problemRows.length} {plural(rows.length - problemRows.length, 'was', 'were')} paid
+            correctly and {plural(rows.length - problemRows.length, 'is', 'are')} not listed.
+          </p>
           <div className="audit-table-wrap">
             <table className="audit-table">
               <thead>
@@ -410,9 +468,9 @@ const SimplifiedAuditResult: React.FC<SimplifiedAuditResultProps> = ({
               </tbody>
             </table>
           </div>
-          {rows.length > ROW_LIMIT && (
+          {problemRows.length > ROW_LIMIT && (
             <button type="button" className="audit-show-all" onClick={() => setShowAllRows(!showAllRows)}>
-              {showAllRows ? 'Show fewer orders' : `Show all ${rows.length} orders`}
+              {showAllRows ? 'Show fewer orders' : `Show all ${problemRows.length} orders with a problem`}
             </button>
           )}
         </div>
@@ -490,6 +548,16 @@ const SimplifiedAuditResult: React.FC<SimplifiedAuditResultProps> = ({
           Check with your platform before taking action.
         </p>
       )}
+      </>)}
+
+      {/* Shared by every evidence mode */}
+      <ContractQuestions questions={questions} />
+      {modeNotes.length > 0 && (
+        <div className="audit-section">
+          {modeNotes.map((note, idx) => <p key={idx} className="evidence-mode-caption">{note}</p>)}
+        </div>
+      )}
+      <CouldNotCheck limits={limits} platform={activePlatform} />
     </div>
   );
 };

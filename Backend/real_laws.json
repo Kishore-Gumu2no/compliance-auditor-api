@@ -14,7 +14,9 @@
     "version": "original",
     "supersedes": null,
     "amended_by": null,
-    "parent_act": "constitution"
+    "parent_act": "constitution",
+    "concepts": [],
+    "parameters": {}
   },
   {
     "id": "constitution_article_15",
@@ -31,7 +33,9 @@
     "version": "original",
     "supersedes": null,
     "amended_by": null,
-    "parent_act": "constitution"
+    "parent_act": "constitution",
+    "concepts": [],
+    "parameters": {}
   },
   {
     "id": "constitution_article_19_1_g",
@@ -48,7 +52,9 @@
     "version": "original",
     "supersedes": null,
     "amended_by": null,
-    "parent_act": "constitution"
+    "parent_act": "constitution",
+    "concepts": [],
+    "parameters": {}
   },
   {
     "id": "constitution_article_21",
@@ -65,7 +71,9 @@
     "version": "original",
     "supersedes": null,
     "amended_by": null,
-    "parent_act": "constitution"
+    "parent_act": "constitution",
+    "concepts": [],
+    "parameters": {}
   },
   {
     "id": "constitution_article_23",
@@ -82,7 +90,9 @@
     "version": "original",
     "supersedes": null,
     "amended_by": null,
-    "parent_act": "constitution"
+    "parent_act": "constitution",
+    "concepts": [],
+    "parameters": {}
   },
   {
     "id": "constitution_article_39_d",
@@ -99,7 +109,9 @@
     "version": "original",
     "supersedes": null,
     "amended_by": null,
-    "parent_act": "constitution"
+    "parent_act": "constitution",
+    "concepts": [],
+    "parameters": {}
   },
   {
     "id": "constitution_article_39_e",
@@ -116,7 +128,9 @@
     "version": "original",
     "supersedes": null,
     "amended_by": null,
-    "parent_act": "constitution"
+    "parent_act": "constitution",
+    "concepts": [],
+    "parameters": {}
   },
   {
     "id": "constitution_article_41",
@@ -133,7 +147,9 @@
     "version": "original",
     "supersedes": null,
     "amended_by": null,
-    "parent_act": "constitution"
+    "parent_act": "constitution",
+    "concepts": [],
+    "parameters": {}
   },
   {
     "id": "constitution_article_42",
@@ -150,7 +166,9 @@
     "version": "original",
     "supersedes": null,
     "amended_by": null,
-    "parent_act": "constitution"
+    "parent_act": "constitution",
+    "concepts": [],
+    "parameters": {}
   },
   {
     "id": "constitution_article_43",
@@ -167,9 +185,10 @@
     "version": "original",
     "supersedes": null,
     "amended_by": null,
-    "parent_act": "constitution"
+    "parent_act": "constitution",
+    "concepts": [],
+    "parameters": {}
   },
-
   {
     "id": "code_wages_2019_section_3",
     "text": "The Code on Wages, 2019 contains a prohibition on discrimination on the ground of gender in matters relating to wages by the employer in respect of the same work or work of a similar nature.",
@@ -185,7 +204,9 @@
     "version": "original",
     "supersedes": null,
     "amended_by": null,
-    "parent_act": "code_wages_2019"
+    "parent_act": "code_wages_2019",
+    "concepts": [],
+    "parameters": {}
   },
   {
     "id": "code_wages_2019_section_5",
@@ -202,7 +223,22 @@
     "version": "original",
     "supersedes": null,
     "amended_by": null,
-    "parent_act": "code_wages_2019"
+    "parent_act": "code_wages_2019",
+    "concepts": [
+      {
+        "concept": "minimum_wage",
+        "keywords": [
+          "minimum wage",
+          "wage floor",
+          "minimum rate",
+          "not less than"
+        ]
+      }
+    ],
+    "parameters": {
+      "minimum_wage_hourly": "650",
+      "minimum_wage_hourly_basis": "FairPay's working benchmark, carried over unchanged from the audit code. Section 5 itself sets no rupee amount: the rate is the one notified by the appropriate Government for the state and work. Replace it with the notified rate."
+    }
   },
   {
     "id": "code_wages_2019_section_13",
@@ -219,7 +255,9 @@
     "version": "original",
     "supersedes": null,
     "amended_by": null,
-    "parent_act": "code_wages_2019"
+    "parent_act": "code_wages_2019",
+    "concepts": [],
+    "parameters": {}
   },
   {
     "id": "code_wages_2019_section_14",
@@ -236,7 +274,19 @@
     "version": "original",
     "supersedes": null,
     "amended_by": null,
-    "parent_act": "code_wages_2019"
+    "parent_act": "code_wages_2019",
+    "concepts": [
+      {
+        "concept": "overtime",
+        "keywords": [
+          "overtime",
+          "extra hours",
+          "beyond normal hours",
+          "twice the normal"
+        ]
+      }
+    ],
+    "parameters": {}
   },
   {
     "id": "code_wages_2019_section_18",
@@ -253,9 +303,20 @@
     "version": "original",
     "supersedes": null,
     "amended_by": null,
-    "parent_act": "code_wages_2019"
+    "parent_act": "code_wages_2019",
+    "concepts": [
+      {
+        "concept": "wage_protection",
+        "keywords": [
+          "deductions",
+          "authorised",
+          "wages",
+          "deductions from wages"
+        ]
+      }
+    ],
+    "parameters": {}
   },
-
   {
     "id": "social_security_2020_section_113",
     "text": "Section 113 of the Code on Social Security, 2020 concerns registration of unorganised workers, gig workers and platform workers for the purposes of the relevant social security provisions.",
@@ -271,7 +332,9 @@
     "version": "original",
     "supersedes": null,
     "amended_by": null,
-    "parent_act": "social_security_2020"
+    "parent_act": "social_security_2020",
+    "concepts": [],
+    "parameters": {}
   },
   {
     "id": "social_security_2020_section_114",
@@ -288,9 +351,10 @@
     "version": "original",
     "supersedes": null,
     "amended_by": null,
-    "parent_act": "social_security_2020"
+    "parent_act": "social_security_2020",
+    "concepts": [],
+    "parameters": {}
   },
-
   {
     "id": "karnataka_gig_act_section_7",
     "text": "Section 7 of the Karnataka Platform Based Gig Workers (Social Security and Welfare) Act, 2025 provides rights of platform based gig workers under the Act.",
@@ -306,7 +370,9 @@
     "version": "original",
     "supersedes": null,
     "amended_by": null,
-    "parent_act": "karnataka_gig_act_2025"
+    "parent_act": "karnataka_gig_act_2025",
+    "concepts": [],
+    "parameters": {}
   },
   {
     "id": "karnataka_gig_act_section_12",
@@ -323,7 +389,9 @@
     "version": "original",
     "supersedes": null,
     "amended_by": null,
-    "parent_act": "karnataka_gig_act_2025"
+    "parent_act": "karnataka_gig_act_2025",
+    "concepts": [],
+    "parameters": {}
   },
   {
     "id": "karnataka_gig_act_section_13",
@@ -340,7 +408,9 @@
     "version": "original",
     "supersedes": null,
     "amended_by": null,
-    "parent_act": "karnataka_gig_act_2025"
+    "parent_act": "karnataka_gig_act_2025",
+    "concepts": [],
+    "parameters": {}
   },
   {
     "id": "karnataka_gig_act_section_14",
@@ -357,7 +427,9 @@
     "version": "original",
     "supersedes": null,
     "amended_by": null,
-    "parent_act": "karnataka_gig_act_2025"
+    "parent_act": "karnataka_gig_act_2025",
+    "concepts": [],
+    "parameters": {}
   },
   {
     "id": "karnataka_gig_act_section_15",
@@ -374,7 +446,31 @@
     "version": "original",
     "supersedes": null,
     "amended_by": null,
-    "parent_act": "karnataka_gig_act_2025"
+    "parent_act": "karnataka_gig_act_2025",
+    "concepts": [
+      {
+        "concept": "deduction_notice",
+        "keywords": [
+          "deduction",
+          "inform",
+          "reasons for deduction",
+          "invoice"
+        ]
+      },
+      {
+        "concept": "incentive_bonus",
+        "keywords": [
+          "income security",
+          "deducted",
+          "inform",
+          "reasons for deduction",
+          "invoice",
+          "payout",
+          "payouts must follow the contract"
+        ]
+      }
+    ],
+    "parameters": {}
   },
   {
     "id": "karnataka_gig_act_section_16",
@@ -391,7 +487,9 @@
     "version": "original",
     "supersedes": null,
     "amended_by": null,
-    "parent_act": "karnataka_gig_act_2025"
+    "parent_act": "karnataka_gig_act_2025",
+    "concepts": [],
+    "parameters": {}
   },
   {
     "id": "karnataka_gig_act_section_17",
@@ -408,7 +506,9 @@
     "version": "original",
     "supersedes": null,
     "amended_by": null,
-    "parent_act": "karnataka_gig_act_2025"
+    "parent_act": "karnataka_gig_act_2025",
+    "concepts": [],
+    "parameters": {}
   },
   {
     "id": "karnataka_gig_act_section_20",
@@ -425,7 +525,9 @@
     "version": "original",
     "supersedes": null,
     "amended_by": null,
-    "parent_act": "karnataka_gig_act_2025"
+    "parent_act": "karnataka_gig_act_2025",
+    "concepts": [],
+    "parameters": {}
   },
   {
     "id": "karnataka_gig_act_section_21",
@@ -442,7 +544,20 @@
     "version": "original",
     "supersedes": null,
     "amended_by": null,
-    "parent_act": "karnataka_gig_act_2025"
+    "parent_act": "karnataka_gig_act_2025",
+    "concepts": [
+      {
+        "concept": "payment_recording",
+        "keywords": [
+          "recorded",
+          "reported",
+          "payment and welfare fee",
+          "verification system",
+          "transaction-level payment"
+        ]
+      }
+    ],
+    "parameters": {}
   },
   {
     "id": "karnataka_gig_act_section_22",
@@ -459,7 +574,9 @@
     "version": "original",
     "supersedes": null,
     "amended_by": null,
-    "parent_act": "karnataka_gig_act_2025"
+    "parent_act": "karnataka_gig_act_2025",
+    "concepts": [],
+    "parameters": {}
   },
   {
     "id": "karnataka_gig_act_section_24",
@@ -476,9 +593,10 @@
     "version": "original",
     "supersedes": null,
     "amended_by": null,
-    "parent_act": "karnataka_gig_act_2025"
+    "parent_act": "karnataka_gig_act_2025",
+    "concepts": [],
+    "parameters": {}
   },
-
   {
     "id": "karnataka_gig_rules_2025_rule_10",
     "text": "Rule 10 of the Karnataka Platform Based Gig Workers (Social Security and Welfare) Rules, 2025 concerns the mechanism through which platform based gig workers can seek information regarding fares, earnings and customer feedback that may affect their work.",
@@ -494,7 +612,9 @@
     "version": "original",
     "supersedes": null,
     "amended_by": null,
-    "parent_act": "karnataka_gig_rules_2025"
+    "parent_act": "karnataka_gig_rules_2025",
+    "concepts": [],
+    "parameters": {}
   },
   {
     "id": "karnataka_gig_rules_2025_rule_20",
@@ -511,6 +631,19 @@
     "version": "original",
     "supersedes": null,
     "amended_by": null,
-    "parent_act": "karnataka_gig_rules_2025"
+    "parent_act": "karnataka_gig_rules_2025",
+    "concepts": [
+      {
+        "concept": "payment_recording",
+        "keywords": [
+          "recorded",
+          "reported",
+          "payment and welfare fee",
+          "verification system",
+          "transaction-level payment"
+        ]
+      }
+    ],
+    "parameters": {}
   }
 ]
