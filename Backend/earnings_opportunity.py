@@ -33,10 +33,13 @@ from collections import defaultdict
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Dict, List, Optional, Tuple
 
+from psycopg import Connection
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from real_data import conn, load_partner_profile  # reuse the existing connection
+import db
+from platforms import platform_key
+from real_data import load_partner_profile
 
 SCENARIO_TYPES = ("hours", "days", "expenses")
 
@@ -115,13 +118,13 @@ def _rs(value: Any) -> str:
 # Baseline - the partner's actual historical numbers
 # ---------------------------------------------------------------------------
 
-def load_earnings_baseline(partner_id: str) -> Dict[str, Any]:
+def load_earnings_baseline(partner_id: str, conn: Optional[Connection] = None) -> Dict[str, Any]:
     """Aggregate the partner's own daily history into a deterministic baseline.
 
     Reads ``v_daily_business_summary`` (one row per day actually worked), which
     already rolls up income, fuel/energy cost and online hours per day.
     """
-    with conn.cursor(row_factory=dict_row) as cur:
+    with db.session(conn) as cx, cx.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
             SELECT day, orders, online_hours, business_hours, active_hours,
@@ -581,10 +584,6 @@ def debate_state_from_opportunity(
 # * order hours  - time spent on one app's orders, from order accepted to
 #   delivered. Overlapping orders on the same app count once.
 
-def _platform_key(name: str) -> str:
-    return "".join(ch for ch in (name or "").lower() if ch.isalnum())
-
-
 def _hours(minutes: float) -> str:
     return str(_rate(Decimal(str(minutes)) / Decimal(60)).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
 
@@ -603,9 +602,11 @@ def _union_seconds(intervals: List[Tuple[float, float]]) -> float:
     return total
 
 
-def history_hours_by_platform(partner_id: str, platforms: List[str]) -> Dict[str, Any]:
+def history_hours_by_platform(
+    partner_id: str, platforms: List[str], conn: Optional[Connection] = None
+) -> Dict[str, Any]:
     """Hours worked from the 30-day history: order hours per app, online hours overall."""
-    with conn.cursor(row_factory=dict_row) as cur:
+    with db.session(conn) as cx, cx.cursor(row_factory=dict_row) as cur:
         cur.execute(
             "SELECT platform, order_timestamp, completed_timestamp FROM orders WHERE partner_id = %s",
             (partner_id,),
@@ -622,7 +623,7 @@ def history_hours_by_platform(partner_id: str, platforms: List[str]) -> Dict[str
     for row in orders:
         start, end = row["order_timestamp"], row["completed_timestamp"]
         if start and end and end > start:
-            key = _platform_key(row["platform"])
+            key = platform_key(row["platform"])
             by_platform[key].append((start.timestamp(), end.timestamp()))
             days_by_platform[key].add(start.date())
 
@@ -634,7 +635,7 @@ def history_hours_by_platform(partner_id: str, platforms: List[str]) -> Dict[str
 
     rows = []
     for platform in platforms:
-        key = _platform_key(platform)
+        key = platform_key(platform)
         intervals = by_platform.get(key) or []
         rows.append({
             "platform": platform,
@@ -682,7 +683,7 @@ def work_time_hours_by_platform(work_time: List[Dict[str, Any]], platforms: List
 
     rows = []
     for platform in platforms:
-        entries = [e for e in work_time if _platform_key(e.get("platform", "")) == _platform_key(platform)]
+        entries = [e for e in work_time if platform_key(e.get("platform", "")) == platform_key(platform)]
         minutes, days, estimated = _total(entries)
         rows.append({
             "platform": platform,
@@ -723,6 +724,7 @@ def load_scenario_figures(
     platform: str,
     submission_id: Optional[str] = None,
     merged: Optional[Dict[str, Any]] = None,
+    conn: Optional[Connection] = None,
 ) -> Dict[str, Any]:
     """The partner's real numbers, named so a scenario can be turned into a sum.
 
@@ -751,17 +753,17 @@ def load_scenario_figures(
         if baseline.get("total_operating_cost") is not None:
             figures["total_fuel_cost"] = _figure("Fuel or energy cost, all apps", baseline["total_operating_cost"])
 
-    key = _platform_key(platform)
+    key = platform_key(platform)
     if merged is None:
         try:
-            with conn.cursor(row_factory=dict_row) as cur:
+            with db.session(conn) as cx, cx.cursor(row_factory=dict_row) as cur:
                 cur.execute(
                     "SELECT platform, SUM(net_amount) AS income, COUNT(*) AS orders "
                     "FROM earnings WHERE partner_id = %s GROUP BY platform",
                     (partner_id,),
                 )
                 for row in cur.fetchall():
-                    if _platform_key(row["platform"]) == key:
+                    if platform_key(row["platform"]) == key:
                         figures["platform_income"] = _figure(f"Earnings on {platform}", row["income"])
                         figures["platform_orders"] = _figure(f"Orders on {platform}", row["orders"], money=False)
                 cur.execute(
@@ -770,7 +772,7 @@ def load_scenario_figures(
                     (partner_id,),
                 )
                 for row in cur.fetchall():
-                    if _platform_key(row["platform"]) == key:
+                    if platform_key(row["platform"]) == key:
                         kind = row["incentive_type"]
                         figures[f"platform_{kind}_incentives"] = _figure(
                             f"{kind.replace('_', ' ').capitalize()} incentives on {platform}", row["total"]
@@ -781,19 +783,22 @@ def load_scenario_figures(
                     (partner_id,),
                 )
                 for row in cur.fetchall():
-                    if _platform_key(row["platform"]) == key:
+                    if platform_key(row["platform"]) == key:
                         figures[f"platform_{row['category']}_deductions"] = _figure(
                             f"{row['category'].capitalize()} deductions on {platform}", row["total"]
                         )
         except Exception:
-            conn.rollback()
+            # These per-platform figures are optional detail: the scenario still
+            # has the baseline above. The pool has already rolled the borrowed
+            # connection back, so the failure cannot reach another caller.
+            pass
     else:
         transactions = {t.get("transaction_id"): t for t in merged.get("transactions") or []}
         income, orders, incentives = Decimal("0"), 0, Decimal("0")
         for prediction in merged.get("reconciliation_predictions") or []:
             if prediction.get("anomaly_type") == "extra_unexplained_settlement":
                 continue
-            if _platform_key(prediction.get("platform", "")) != key:
+            if platform_key(prediction.get("platform", "")) != key:
                 continue
             income += _dec(prediction.get("expected_amount"))
             orders += 1
@@ -851,27 +856,24 @@ def ensure_simulations_table() -> None:
     global _table_ready
     if _table_ready:
         return
-    try:
-        with conn.cursor() as cur:
-            cur.execute(_SIMULATIONS_DDL)
-        conn.commit()
-        _table_ready = True
-    except Exception:
-        conn.rollback()
-        raise
+    # The pool commits when the block exits cleanly and rolls back if it
+    # raises, so there is no explicit commit/rollback to get wrong here.
+    with db.session() as cx, cx.cursor() as cur:
+        cur.execute(_SIMULATIONS_DDL)
+    _table_ready = True
 
 
-def partner_exists(partner_id: str) -> bool:
-    with conn.cursor() as cur:
+def partner_exists(partner_id: str, conn: Optional[Connection] = None) -> bool:
+    with db.session(conn) as cx, cx.cursor() as cur:
         cur.execute("SELECT 1 FROM partners WHERE partner_id = %s", (partner_id,))
         return cur.fetchone() is not None
 
 
-def insert_simulation(projection: Dict[str, Any]) -> Dict[str, Any]:
+def insert_simulation(projection: Dict[str, Any], conn: Optional[Connection] = None) -> Dict[str, Any]:
     """Persist one completed simulation and return the stored row."""
     ensure_simulations_table()
-    try:
-        with conn.cursor(row_factory=dict_row) as cur:
+    with db.session(conn) as cx:
+        with cx.cursor(row_factory=dict_row) as cur:
             cur.execute(
                 """
                 INSERT INTO simulations (
@@ -894,17 +896,15 @@ def insert_simulation(projection: Dict[str, Any]) -> Dict[str, Any]:
                 ),
             )
             row = cur.fetchone()
-        conn.commit()
-        return _row_to_simulation(row)
-    except Exception:
-        conn.rollback()
-        raise
+    return _row_to_simulation(row)
 
 
-def fetch_simulations(partner_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+def fetch_simulations(
+    partner_id: str, limit: int = 50, conn: Optional[Connection] = None
+) -> List[Dict[str, Any]]:
     """Return this partner's saved simulations, newest first."""
     ensure_simulations_table()
-    with conn.cursor(row_factory=dict_row) as cur:
+    with db.session(conn) as cx, cx.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
             SELECT simulation_id, partner_id, scenario_type, scenario_inputs,

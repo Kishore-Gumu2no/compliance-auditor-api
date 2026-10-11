@@ -1177,6 +1177,29 @@ a.telegram-cta:hover .telegram-cta-arrow {
   color: var(--color-fog) !important;
 }
 
+.incentive-loading-state {
+  text-align: center;
+  padding: var(--spacing-48) var(--spacing-32);
+  background: var(--color-graphite);
+  border-radius: var(--radius-featurecards);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  margin-top: var(--spacing-24);
+}
+
+.incentive-loading-state .loading-spinner {
+  width: 28px;
+  height: 28px;
+  margin-right: 0;
+  margin-bottom: var(--spacing-16);
+}
+
+.incentive-loading-state p {
+  font-family: var(--font-suisse-intl);
+  font-size: var(--text-body);
+  color: var(--color-ash);
+  margin: 0;
+}
+
 .audit-results-display {
   background: var(--color-graphite);
   border-radius: var(--radius-featurecards);
@@ -4091,6 +4114,55 @@ a.telegram-cta:hover .telegram-cta-arrow {
   margin-top: var(--spacing-8);
 }
 
+.scenario-guidance {
+  margin-top: 0;
+  margin-bottom: var(--spacing-16);
+}
+
+.suggestion-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-8);
+  margin-bottom: var(--spacing-16);
+}
+
+.suggestion-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-4);
+  font-family: var(--font-suisse-intl);
+  font-size: var(--text-body-sm);
+  color: var(--color-pure);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-full);
+  padding: var(--spacing-4) var(--spacing-12);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.suggestion-chip:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.suggestion-chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.suggestion-chip-icon {
+  font-size: 10px;
+  line-height: 1;
+}
+
+.suggestion-chip-up .suggestion-chip-icon {
+  color: #10b981;
+}
+
+.suggestion-chip-down .suggestion-chip-icon {
+  color: #ef4444;
+}
+
 .result-error {
   background: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.2);
@@ -4749,3 +4821,62 @@ a.telegram-cta:hover .telegram-cta-arrow {
   }
 }
 
+
+/* ───────────────────────────────────────────────────────────────
+   ERROR BOUNDARY — the distinct state shown when a render fails
+   ─────────────────────────────────────────────────────────────── */
+
+.error-boundary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-12);
+  margin: var(--spacing-16) 0;
+  padding: var(--spacing-32);
+  text-align: center;
+  background: var(--color-surface-raised, rgba(255, 255, 255, 0.04));
+  /* Deliberately unlike every other panel: this is a failure, not a result. */
+  border: 1px solid var(--color-danger, #ef4444);
+  border-left-width: 4px;
+  border-radius: var(--radius-card, 12px);
+}
+
+.error-boundary-icon {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.error-boundary-title {
+  margin: 0;
+  font-family: var(--font-lyon-display);
+  font-weight: var(--font-weight-light);
+  font-size: var(--text-heading-sm, 1.25rem);
+  color: var(--color-pure, #fff);
+}
+
+.error-boundary-text {
+  max-width: 48ch;
+  margin: 0;
+  font-family: var(--font-suisse-intl);
+  font-size: var(--text-body-sm);
+  color: var(--color-fog, #9ca3af);
+}
+
+.error-boundary-detail {
+  max-width: 64ch;
+  margin: 0;
+  padding: var(--spacing-8) var(--spacing-12);
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 0.8125rem;
+  color: var(--color-danger, #ef4444);
+  word-break: break-word;
+  background: rgba(239, 68, 68, 0.08);
+  border-radius: var(--radius-sm, 6px);
+}
+
+.error-boundary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-8);
+  justify-content: center;
+}

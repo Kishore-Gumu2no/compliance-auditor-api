@@ -15,13 +15,19 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+from psycopg import Connection
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from real_data import conn  # reuse the existing PostgreSQL connection
+import db
 
 # Single shared implementation; re-exported here for telegram_bot.
 from earnings_opportunity import partner_exists  # noqa: F401
+
+# Each function below borrows its own connection from the pool in db.py, or uses
+# the one the caller passes as ``conn``. db.session commits when the block exits
+# cleanly and rolls back if it raises, which is why none of these functions
+# calls commit() or rollback() itself.
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS telegram_links (
@@ -60,65 +66,53 @@ def ensure_tables() -> None:
     global _ready
     if _ready:
         return
-    try:
-        with conn.cursor() as cur:
-            cur.execute(_DDL)
-        conn.commit()
-        _ready = True
-    except Exception:
-        conn.rollback()
-        raise
+    with db.session() as cx, cx.cursor() as cur:
+        cur.execute(_DDL)
+    _ready = True
 
 
 # ---------------------------------------------------------------------------
 # Chat <-> partner links
 # ---------------------------------------------------------------------------
 
-def link_chat(chat_id: int, partner_id: str) -> None:
+def link_chat(chat_id: int, partner_id: str, conn: Optional[Connection] = None) -> None:
     ensure_tables()
-    try:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO telegram_links (chat_id, partner_id)
-                VALUES (%s, %s)
-                ON CONFLICT (chat_id) DO UPDATE
-                  SET partner_id = EXCLUDED.partner_id, linked_at = now()
-                """,
-                (chat_id, partner_id),
-            )
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
+    with db.session(conn) as cx, cx.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO telegram_links (chat_id, partner_id)
+            VALUES (%s, %s)
+            ON CONFLICT (chat_id) DO UPDATE
+              SET partner_id = EXCLUDED.partner_id, linked_at = now()
+            """,
+            (chat_id, partner_id),
+        )
 
 
-def get_linked_partner(chat_id: int) -> Optional[str]:
+def get_linked_partner(chat_id: int, conn: Optional[Connection] = None) -> Optional[str]:
     ensure_tables()
-    with conn.cursor() as cur:
+    with db.session(conn) as cx, cx.cursor() as cur:
         cur.execute("SELECT partner_id FROM telegram_links WHERE chat_id = %s", (chat_id,))
         row = cur.fetchone()
     return row[0] if row else None
 
 
-def unlink_chat(chat_id: int) -> Dict[str, int]:
+def unlink_chat(chat_id: int, conn: Optional[Connection] = None) -> Dict[str, int]:
     """Forget this Telegram chat: the link to the partner and its submissions.
 
     What a partner asked FairPay to remember about them, they can ask it to
     forget. Returns how many rows were removed.
+
+    Both deletes run in one transaction, so the chat is never left linked to a
+    partner whose submissions are already gone.
     """
     ensure_tables()
-    try:
-        with conn.cursor() as cur:
-            cur.execute("DELETE FROM telegram_submissions WHERE chat_id = %s", (chat_id,))
-            submissions = cur.rowcount
-            cur.execute("DELETE FROM telegram_links WHERE chat_id = %s", (chat_id,))
-            links = cur.rowcount
-        conn.commit()
-        return {"links": links, "submissions": submissions}
-    except Exception:
-        conn.rollback()
-        raise
+    with db.session(conn) as cx, cx.cursor() as cur:
+        cur.execute("DELETE FROM telegram_submissions WHERE chat_id = %s", (chat_id,))
+        submissions = cur.rowcount
+        cur.execute("DELETE FROM telegram_links WHERE chat_id = %s", (chat_id,))
+        links = cur.rowcount
+    return {"links": links, "submissions": submissions}
 
 
 # ---------------------------------------------------------------------------
@@ -126,27 +120,26 @@ def unlink_chat(chat_id: int) -> Dict[str, int]:
 # ---------------------------------------------------------------------------
 
 def create_submission(
-    partner_id: str, chat_id: int, platforms: List[str], document_counts: Dict[str, Any]
+    partner_id: str,
+    chat_id: int,
+    platforms: List[str],
+    document_counts: Dict[str, Any],
+    conn: Optional[Connection] = None,
 ) -> str:
     """Record that an audit run has started. Returns the submission id."""
     ensure_tables()
-    try:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO telegram_submissions
-                    (partner_id, chat_id, status, platforms, document_counts)
-                VALUES (%s, %s, 'processing', %s, %s)
-                RETURNING submission_id
-                """,
-                (partner_id, chat_id, Jsonb(platforms), Jsonb(document_counts)),
-            )
-            submission_id = cur.fetchone()[0]
-        conn.commit()
-        return str(submission_id)
-    except Exception:
-        conn.rollback()
-        raise
+    with db.session(conn) as cx, cx.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO telegram_submissions
+                (partner_id, chat_id, status, platforms, document_counts)
+            VALUES (%s, %s, 'processing', %s, %s)
+            RETURNING submission_id
+            """,
+            (partner_id, chat_id, Jsonb(platforms), Jsonb(document_counts)),
+        )
+        submission_id = cur.fetchone()[0]
+    return str(submission_id)
 
 
 def complete_submission(
@@ -154,47 +147,38 @@ def complete_submission(
     results_by_platform: Dict[str, Any],
     merged_result: Dict[str, Any],
     missing_fields: List[Dict[str, Any]],
+    conn: Optional[Connection] = None,
 ) -> None:
-    try:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                UPDATE telegram_submissions
-                   SET status = 'complete',
-                       results_by_platform = %s,
-                       merged_result = %s,
-                       missing_fields = %s,
-                       completed_at = now()
-                 WHERE submission_id = %s
-                """,
-                (
-                    Jsonb(results_by_platform),
-                    Jsonb(merged_result),
-                    Jsonb(missing_fields),
-                    submission_id,
-                ),
-            )
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
+    with db.session(conn) as cx, cx.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE telegram_submissions
+               SET status = 'complete',
+                   results_by_platform = %s,
+                   merged_result = %s,
+                   missing_fields = %s,
+                   completed_at = now()
+             WHERE submission_id = %s
+            """,
+            (
+                Jsonb(results_by_platform),
+                Jsonb(merged_result),
+                Jsonb(missing_fields),
+                submission_id,
+            ),
+        )
 
 
-def fail_submission(submission_id: str, error: str) -> None:
-    try:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                UPDATE telegram_submissions
-                   SET status = 'failed', error = %s, completed_at = now()
-                 WHERE submission_id = %s
-                """,
-                (error, submission_id),
-            )
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
+def fail_submission(submission_id: str, error: str, conn: Optional[Connection] = None) -> None:
+    with db.session(conn) as cx, cx.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE telegram_submissions
+               SET status = 'failed', error = %s, completed_at = now()
+             WHERE submission_id = %s
+            """,
+            (error, submission_id),
+        )
 
 
 _SELECT_COLUMNS = """
@@ -203,10 +187,10 @@ _SELECT_COLUMNS = """
 """
 
 
-def get_latest_complete(partner_id: str) -> Optional[Dict[str, Any]]:
+def get_latest_complete(partner_id: str, conn: Optional[Connection] = None) -> Optional[Dict[str, Any]]:
     """The newest completed submission for this partner, including its results."""
     ensure_tables()
-    with conn.cursor(row_factory=dict_row) as cur:
+    with db.session(conn) as cx, cx.cursor(row_factory=dict_row) as cur:
         cur.execute(
             f"""
             SELECT {_SELECT_COLUMNS}, results_by_platform, merged_result
@@ -226,23 +210,26 @@ def get_latest_complete(partner_id: str) -> Optional[Dict[str, Any]]:
     return payload
 
 
-def get_submission_result(partner_id: str, submission_id: str) -> Optional[Dict[str, Any]]:
-    """One completed submission's merged result, only if it belongs to this partner."""
+def get_submission_result(
+    partner_id: str, submission_id: str, conn: Optional[Connection] = None
+) -> Optional[Dict[str, Any]]:
+    """One completed submission's merged result, only if it belongs to this partner.
+
+    A malformed submission id fails this query only. It used to need an explicit
+    rollback to keep the failed transaction off the single shared connection;
+    with a pool the borrowed connection is rolled back and reset on the way out.
+    """
     ensure_tables()
-    try:
-        with conn.cursor(row_factory=dict_row) as cur:
-            cur.execute(
-                """
-                SELECT merged_result
-                FROM telegram_submissions
-                WHERE submission_id = %s AND partner_id = %s AND status = 'complete'
-                """,
-                (submission_id, partner_id),
-            )
-            row = cur.fetchone()
-    except Exception:
-        conn.rollback()  # e.g. a malformed UUID must not poison the shared connection
-        raise
+    with db.session(conn) as cx, cx.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT merged_result
+            FROM telegram_submissions
+            WHERE submission_id = %s AND partner_id = %s AND status = 'complete'
+            """,
+            (submission_id, partner_id),
+        )
+        row = cur.fetchone()
     return row["merged_result"] if row else None
 
 
@@ -256,21 +243,16 @@ def mark_seen(submission_id: str, partner_id: str) -> bool:
     cleaned up the first time they are opened.
     """
     ensure_tables()
-    try:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                UPDATE telegram_submissions
-                   SET seen_on_website = TRUE
-                 WHERE submission_id = %s AND partner_id = %s
-                """,
-                (submission_id, partner_id),
-            )
-            updated = cur.rowcount
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
+    with db.session() as cx, cx.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE telegram_submissions
+               SET seen_on_website = TRUE
+             WHERE submission_id = %s AND partner_id = %s
+            """,
+            (submission_id, partner_id),
+        )
+        updated = cur.rowcount
     if updated > 0:
         purge_submission_details(submission_id, partner_id)
     return updated > 0
@@ -366,46 +348,45 @@ def _purge_results_by_platform(payload: Any) -> Any:
     return kept
 
 
-def purge_submission_details(submission_id: str, partner_id: Optional[str] = None) -> bool:
+def purge_submission_details(
+    submission_id: str, partner_id: Optional[str] = None, conn: Optional[Connection] = None
+) -> bool:
     """Delete the trip-level details of one submission the partner has been shown.
 
     Returns True when a row was rewritten. Running it again changes nothing.
+
+    The read and the rewrite share one transaction, so a row cannot be purged
+    twice or be read by this function while another caller is rewriting it.
     """
     ensure_tables()
     where = "submission_id = %s" + (" AND partner_id = %s" if partner_id else "")
     params: tuple = (submission_id, partner_id) if partner_id else (submission_id,)
-    try:
-        with conn.cursor(row_factory=dict_row) as cur:
-            cur.execute(f"SELECT merged_result, results_by_platform FROM telegram_submissions WHERE {where}", params)
-            row = cur.fetchone()
-            if not row or (row["merged_result"] or {}).get(PURGED_FLAG):
-                conn.commit()
-                return False
-            cur.execute(
-                f"""
-                UPDATE telegram_submissions
-                   SET merged_result = %s, results_by_platform = %s
-                 WHERE {where}
-                """,
-                (Jsonb(purge_trip_details(row["merged_result"] or {})),
-                 Jsonb(_purge_results_by_platform(row["results_by_platform"])),
-                 *params),
-            )
-            updated = cur.rowcount
-        conn.commit()
-        return updated > 0
-    except Exception:
-        conn.rollback()
-        raise
+    with db.session(conn) as cx, cx.cursor(row_factory=dict_row) as cur:
+        cur.execute(f"SELECT merged_result, results_by_platform FROM telegram_submissions WHERE {where}", params)
+        row = cur.fetchone()
+        if not row or (row["merged_result"] or {}).get(PURGED_FLAG):
+            return False
+        cur.execute(
+            f"""
+            UPDATE telegram_submissions
+               SET merged_result = %s, results_by_platform = %s
+             WHERE {where}
+            """,
+            (Jsonb(purge_trip_details(row["merged_result"] or {})),
+             Jsonb(_purge_results_by_platform(row["results_by_platform"])),
+             *params),
+        )
+        updated = cur.rowcount
+    return updated > 0
 
 
-def purge_shown_submission_details() -> List[str]:
+def purge_shown_submission_details(conn: Optional[Connection] = None) -> List[str]:
     """Clean up every completed submission that still holds trip-level details.
 
     For rows stored before purging existed. Returns the ids that were cleaned.
     """
     ensure_tables()
-    with conn.cursor(row_factory=dict_row) as cur:
+    with db.session(conn) as cx, cx.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
             SELECT submission_id

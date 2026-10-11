@@ -3,9 +3,10 @@
 // Core FastAPI service layer (audit & streaming)
 // -------------------------------------------------
 
-// Base URL – picks up VITE_API_BASE_URL from .env, defaults to local dev server
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+// Every call goes through services/http.ts, which owns the base URL and turns
+// a failed response into an ApiError with a usable message.
+import { API_BASE_URL, apiFetch, apiPost } from "./http";
+export { ApiError } from "./http";
 
 // ---------------------------------------------------------------------
 // Types for the main audit endpoint
@@ -243,54 +244,115 @@ export interface BatchSummary {
 // ---------------------------------------------------------------------
 // WebSocket earnings stream – GET /stream
 // ---------------------------------------------------------------------
-export interface StreamMessage {
-  type: "earnings" | "error" | "connected";
-  platform?: string;
-  earnings?: number;
-  message?: string;
-}
+/**
+ * A message from the earnings stream.
+ *
+ * A discriminated union, so a handler cannot read `platform` off a status
+ * message and cannot forget that `earnings` may legitimately be 0 - the old
+ * shape made every field optional and the truthiness check that followed
+ * silently dropped an earnings value of zero.
+ */
+export type StreamMessage =
+  | { type: "earnings"; platform: string; earnings: number }
+  /** The socket's own readyState changed. The UI derives "live" from this. */
+  | { type: "status"; readyState: number }
+  /** A plain-text line from the server (it confirms each message it stores). */
+  | { type: "notice"; text: string };
 
 export type StreamCallback = (message: StreamMessage) => void;
 
-export function createEarningsStream(callback: StreamCallback, partnerId?: string): WebSocket {
-  const wsUrl = `ws://127.0.0.1:8000/stream${partnerId ? `?partner_id=${partnerId}` : ''}`;
-  const ws = new WebSocket(wsUrl);
+/** A running earnings stream, and the handle needed to stop it. */
+export interface EarningsStream {
+  /**
+   * Close the socket and stop reconnecting. Safe to call more than once.
+   *
+   * Without this there was no way to stop the stream: reconnection created a
+   * new socket inside a `setTimeout` and threw the reference away, so the
+   * caller could only ever close the first one. Under React StrictMode, where
+   * every effect runs twice, that left a socket nobody could reach reconnecting
+   * for the lifetime of the tab.
+   */
+  close(): void;
+  /** The live socket's readyState, or CLOSED when there is none. */
+  readyState(): number;
+}
 
-  ws.onopen = () => {
-    callback({ type: "connected" });
-  };
+const RECONNECT_DELAY_MS = 3000;
 
-  ws.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      if (data.platform && typeof data.earnings === "number") {
-        callback({
-          type: "earnings",
-          platform: data.platform,
-          earnings: data.earnings,
-        });
-      } else {
-        // Server may send plain‑text confirmations
-        callback({ type: "earnings", message: event.data });
+function streamUrl(partnerId?: string): string {
+  // Derived from the same base URL as every other call, so a deployment only
+  // configures one host. http(s) -> ws(s).
+  const base = API_BASE_URL.replace(/^http/, "ws").replace(/\/$/, "");
+  const query = partnerId ? `?partner_id=${encodeURIComponent(partnerId)}` : "";
+  return `${base}/stream${query}`;
+}
+
+export function createEarningsStream(
+  callback: StreamCallback,
+  partnerId?: string,
+): EarningsStream {
+  let socket: WebSocket | null = null;
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  // Set by close(). Every handler checks it, so a socket already on its way out
+  // cannot report state or schedule a reconnect after the caller let go.
+  let stopped = false;
+
+  const connect = () => {
+    if (stopped) return;
+    const ws = new WebSocket(streamUrl(partnerId));
+    socket = ws;
+    callback({ type: "status", readyState: ws.readyState });
+
+    ws.onopen = () => {
+      if (stopped) return;
+      callback({ type: "status", readyState: ws.readyState });
+    };
+
+    ws.onmessage = (event) => {
+      if (stopped) return;
+      try {
+        const data = JSON.parse(event.data);
+        if (typeof data?.platform === "string" && typeof data?.earnings === "number") {
+          callback({ type: "earnings", platform: data.platform, earnings: data.earnings });
+          return;
+        }
+      } catch {
+        // Not JSON: the server also sends plain-text confirmations.
       }
-    } catch {
-      callback({ type: "earnings", message: event.data });
-    }
+      callback({ type: "notice", text: String(event.data) });
+    };
+
+    ws.onerror = () => {
+      if (stopped) return;
+      callback({ type: "status", readyState: ws.readyState });
+    };
+
+    ws.onclose = () => {
+      // A close we asked for is final; only an unexpected one reconnects.
+      if (stopped) return;
+      callback({ type: "status", readyState: WebSocket.CLOSED });
+      retryTimer = setTimeout(connect, RECONNECT_DELAY_MS);
+    };
   };
 
-  ws.onerror = () => {
-    callback({ type: "error", message: "WebSocket connection error" });
-  };
+  connect();
 
-  ws.onclose = () => {
-    callback({ type: "error", message: "Connection closed. Reconnecting..." });
-    // Auto‑reconnect after a short delay
-    setTimeout(() => {
-      createEarningsStream(callback, partnerId);
-    }, 3000);
+  return {
+    close() {
+      stopped = true;
+      if (retryTimer !== null) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
+      // Closed whatever its state: a socket still CONNECTING was the one the
+      // old `readyState === OPEN` check skipped and leaked.
+      socket?.close();
+      socket = null;
+    },
+    readyState() {
+      return socket?.readyState ?? WebSocket.CLOSED;
+    },
   };
-
-  return ws;
 }
 
 // -------------------------------------------------
@@ -339,19 +401,11 @@ export interface HoursWorked {
 export async function simulate_counterfactual(
   scenario: CounterfactualScenario
 ): Promise<CounterfactualResult> {
-  const response = await fetch(`${API_BASE_URL}/counterfactual/simulate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(scenario),
-  });
-
-  if (!response.ok) {
-    const err = await response
-      .json()
-      .catch(() => ({ detail: "Simulation failed" }));
-    throw new Error(err.detail || "Failed to run counterfactual simulation");
-  }
-  return response.json();
+  return apiPost<CounterfactualResult>(
+    "/counterfactual/simulate",
+    scenario,
+    "Failed to run counterfactual simulation",
+  );
 }
 
 // -------------------------------------------------
@@ -426,27 +480,16 @@ export interface SavedSimulation {
   created_at: string;
 }
 
-async function parseOrThrow(response: Response, fallback: string) {
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({ detail: fallback }));
-    const detail = err.detail;
-    throw new Error(
-      typeof detail === "string" ? detail : fallback
-    );
-  }
-  return response.json();
-}
-
 // GET /earnings-opportunity/baseline/{partner_id}
 export async function get_earnings_baseline(
   partner_id: string,
   submission_id?: string | null
 ): Promise<EarningsBaseline> {
   const query = submission_id ? `?submission_id=${encodeURIComponent(submission_id)}` : "";
-  const response = await fetch(
-    `${API_BASE_URL}/earnings-opportunity/baseline/${partner_id}${query}`
+  return apiFetch<EarningsBaseline>(
+    `/earnings-opportunity/baseline/${encodeURIComponent(partner_id)}${query}`,
+    { fallback: "Failed to load your earnings baseline" },
   );
-  return parseOrThrow(response, "Failed to load your earnings baseline");
 }
 
 // POST /earnings-opportunity/simulate
@@ -456,12 +499,11 @@ export async function simulate_earnings_opportunity(req: {
   value: number;
   submission_id?: string | null;
 }): Promise<OpportunityResult> {
-  const response = await fetch(`${API_BASE_URL}/earnings-opportunity/simulate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(req),
-  });
-  return parseOrThrow(response, "Failed to run the simulation");
+  return apiPost<OpportunityResult>(
+    "/earnings-opportunity/simulate",
+    req,
+    "Failed to run the simulation",
+  );
 }
 
 // POST /simulations - persist a completed simulation
@@ -471,20 +513,17 @@ export async function save_simulation(req: {
   value: number;
   submission_id?: string | null;
 }): Promise<SavedSimulation> {
-  const response = await fetch(`${API_BASE_URL}/simulations`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(req),
-  });
-  return parseOrThrow(response, "Failed to save the simulation");
+  return apiPost<SavedSimulation>("/simulations", req, "Failed to save the simulation");
 }
 
 // GET /simulations/{partner_id} - saved history for this partner only
 export async function get_simulations(
   partner_id: string
 ): Promise<SavedSimulation[]> {
-  const response = await fetch(`${API_BASE_URL}/simulations/${partner_id}`);
-  return parseOrThrow(response, "Failed to load your saved simulations");
+  return apiFetch<SavedSimulation[]>(
+    `/simulations/${encodeURIComponent(partner_id)}`,
+    { fallback: "Failed to load your saved simulations" },
+  );
 }
 
 // -------------------------------------------------
@@ -516,10 +555,10 @@ export interface TelegramLatestResponse {
 export async function get_latest_telegram_audit(
   partner_id: string
 ): Promise<TelegramLatestResponse> {
-  const response = await fetch(
-    `${API_BASE_URL}/telegram/submissions/${partner_id}/latest`
+  return apiFetch<TelegramLatestResponse>(
+    `/telegram/submissions/${encodeURIComponent(partner_id)}/latest`,
+    { fallback: "Failed to load the Telegram audit" },
   );
-  return parseOrThrow(response, "Failed to load the Telegram audit");
 }
 
 // POST /telegram/submissions/seen
@@ -527,30 +566,21 @@ export async function mark_telegram_audit_seen(
   partner_id: string,
   submission_id: string
 ): Promise<{ status: string }> {
-  const response = await fetch(`${API_BASE_URL}/telegram/submissions/seen`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ partner_id, submission_id }),
-  });
-  return parseOrThrow(response, "Failed to update the submission");
+  return apiPost<{ status: string }>(
+    "/telegram/submissions/seen",
+    { partner_id, submission_id },
+    "Failed to update the submission",
+  );
 }
 
 // POST /audit/history/{partner_id} - Milestone 2 CTA
 export async function auditPartnerHistory(
   partner_id: string
 ): Promise<AuditResponse> {
-  const response = await fetch(`${API_BASE_URL}/audit/history/${partner_id}`, {
-    method: "GET",
-    headers: { "Content-Type": "application/json" },
-  });
-
-  if (!response.ok) {
-    const err = await response
-      .json()
-      .catch(() => ({ detail: "History audit failed" }));
-    throw new Error(err.detail || "Failed to run history audit");
-  }
-  return response.json();
+  return apiFetch<AuditResponse>(
+    `/audit/history/${encodeURIComponent(partner_id)}`,
+    { fallback: "Failed to run history audit" },
+  );
 }
 
 // ---------------------------------------------------------------------
@@ -727,14 +757,5 @@ export interface IncentiveAuditRequest {
 }
 
 export async function runIncentiveAudit(req: IncentiveAuditRequest): Promise<IncentiveReport> {
-  const response = await fetch(`${API_BASE_URL}/audit/incentive`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(req),
-  });
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({ detail: "Incentive check failed" }));
-    throw new Error(err.detail || "Incentive check failed");
-  }
-  return response.json();
+  return apiPost<IncentiveReport>("/audit/incentive", req, "Incentive check failed");
 }

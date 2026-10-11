@@ -11,6 +11,7 @@ import {
   type SavedSimulation,
 } from '../services/api';
 import { formatCurrency, auditNumber } from '../services/demoData';
+import { PLATFORMS, platformDisplayName } from '../services/platforms';
 import ReactMarkdown from 'react-markdown';
 
 interface Synthesis {
@@ -33,6 +34,18 @@ const SCENARIO_LABELS: Record<ScenarioType, string> = {
   days: 'Working days',
   expenses: 'Expenses',
 };
+
+// Example prompts for "Describe a Change", grounded in numeric pay/cost
+// changes so the AI debate has a calculable figure to work from. The first
+// three describe changes that put more money in the partner's pocket; the
+// last two describe changes that take money out.
+const SCENARIO_SUGGESTIONS: { text: string; direction: 'up' | 'down' }[] = [
+  { text: 'Increase peak hour incentive by 20%', direction: 'up' },
+  { text: 'Add a ₹50 bonus for every order above 20 in a day', direction: 'up' },
+  { text: 'Reduce fuel cost per order by 15%', direction: 'up' },
+  { text: 'Cut per-order base pay by 10%', direction: 'down' },
+  { text: 'Remove the weekend incentive bonus', direction: 'down' },
+];
 
 export const CounterfactualSimulator: React.FC<CounterfactualSimulatorProps> = ({ initialAuditContext }) => {
   const [platform, setPlatform] = useState('Zomato');
@@ -108,7 +121,13 @@ export const CounterfactualSimulator: React.FC<CounterfactualSimulatorProps> = (
   const expensesAvailable = canSimulate && baseline?.expenses_available !== false;
 
   // Default the input to the partner's current pattern whenever the scenario changes.
+  // Clearing result/opportunity here, together and unconditionally, stops a
+  // stale result from the other flow (e.g. "Describe a Change") rendering in
+  // its own, different style while the new scenario's calculation is loading.
   useEffect(() => {
+    setResult(null);
+    setOpportunity(null);
+    setSaveNotice(null);
     if (!baseline || !baseline.simulation_possible) return;
     if (scenarioType === 'expenses' && baseline.expenses_available === false) {
       setScenarioType('hours');
@@ -121,8 +140,6 @@ export const CounterfactualSimulator: React.FC<CounterfactualSimulatorProps> = (
     } else {
       setScenarioValue('0');
     }
-    setOpportunity(null);
-    setSaveNotice(null);
   }, [scenarioType, baseline]);
 
   const loadHistory = useCallback(async (partner: string) => {
@@ -440,9 +457,12 @@ export const CounterfactualSimulator: React.FC<CounterfactualSimulatorProps> = (
                   className="platform-select"
                   disabled={loading}
                 >
-                  <option value="Zomato">Zomato</option>
-                  <option value="Swiggy">Swiggy</option>
-                  <option value="Uber Eats">Uber Eats</option>
+                  {/* Values are wire names, labels are display names - both
+                      from services/platforms.ts, so adding a platform is one
+                      edit there rather than another hardcoded <option>. */}
+                  {PLATFORMS.map((p) => (
+                    <option key={p.id} value={p.id}>{p.displayName}</option>
+                  ))}
                 </select>
               </div>
             )}
@@ -451,6 +471,28 @@ export const CounterfactualSimulator: React.FC<CounterfactualSimulatorProps> = (
               <div className="control-card">
                 <h3 className="control-title">Describe a Change</h3>
                 <p className="slider-hint">Type a change in your own words, like "increase peak hour bonus by 20%".</p>
+                <p className="control-hint scenario-guidance">
+                  Ask about a specific, numeric change to pay, incentives, bonuses, fuel or other
+                  costs — FairPay calculates the real impact from your own figures, it never
+                  invents them. It cannot answer questions with no number to calculate, such as
+                  legal advice or anything unrelated to your earnings.
+                </p>
+                <div className="suggestion-chips">
+                  {SCENARIO_SUGGESTIONS.map((suggestion) => (
+                    <button
+                      key={suggestion.text}
+                      type="button"
+                      className={`suggestion-chip suggestion-chip-${suggestion.direction}`}
+                      onClick={() => setDescription(suggestion.text)}
+                      disabled={loading || !auditContext}
+                    >
+                      <span className="suggestion-chip-icon" aria-hidden="true">
+                        {suggestion.direction === 'up' ? '▲' : '▼'}
+                      </span>
+                      {suggestion.text}
+                    </button>
+                  ))}
+                </div>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
@@ -564,7 +606,9 @@ export const CounterfactualSimulator: React.FC<CounterfactualSimulatorProps> = (
                 <div className="result-header">
                   <span className="result-badge">RESULT</span>
                   <span className="result-platform">
-                    {opportunity ? SCENARIO_LABELS[opportunity.scenario_type] : platform}
+                    {opportunity
+                      ? SCENARIO_LABELS[opportunity.scenario_type]
+                      : platformDisplayName(platform)}
                   </span>
                 </div>
 

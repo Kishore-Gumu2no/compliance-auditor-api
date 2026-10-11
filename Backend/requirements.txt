@@ -15,6 +15,6 @@ presidio-anonymizer
 python-dotenv
 websockets
 httpx
-psycopg[binary]
+psycopg[binary,pool]
 pytest
 pytest-asyncio

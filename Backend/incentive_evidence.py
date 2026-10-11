@@ -20,9 +20,13 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple
+
+if TYPE_CHECKING:
+    from psycopg import Connection
 
 from pydantic import BaseModel, Field
 
@@ -181,7 +185,11 @@ def _local(ts: Optional[datetime]) -> Optional[datetime]:
     return ts.replace(tzinfo=None)
 
 
-def load_history_evidence(partner_id: str, platform: Optional[str] = None) -> IncentiveEvidence:
+def load_history_evidence(
+    partner_id: str,
+    platform: Optional[str] = None,
+    conn: Optional[Connection] = None,
+) -> IncentiveEvidence:
     """The partner's records on file as incentive evidence.
 
     * Trips: every order row (``orders``), with accepted and delivered times.
@@ -196,9 +204,10 @@ def load_history_evidence(partner_id: str, platform: Optional[str] = None) -> In
     """
     from psycopg.rows import dict_row
 
-    from real_data import conn
+    import db
 
-    with conn.cursor(row_factory=dict_row) as cur:
+    # All five reads share one connection, so they see one consistent snapshot.
+    with db.session(conn) as cx, cx.cursor(row_factory=dict_row) as cur:
         cur.execute("SELECT zone FROM partners WHERE partner_id = %s", (partner_id,))
         partner = cur.fetchone()
         if not partner:
@@ -381,41 +390,72 @@ def _rate(value: Any) -> Optional[Decimal]:
     return (number / 100) if number > 1 else number
 
 
-def evidence_from_extraction(partner_id: str, platform: str, extraction: Dict[str, Any],
-                             region: Optional[str] = None) -> IncentiveEvidence:
-    """Normalise what was read off the documents into incentive evidence.
+# ---------------------------------------------------------------------------
+# Reading the documents
+# ---------------------------------------------------------------------------
+# One step per rule, assembled by evidence_from_extraction at the end of this
+# section. Each step is given the rows and a _ReadingNotes to record what it
+# could not read; none of them decides anything about an incentive.
 
-    ``extraction`` is ``IncentiveDocumentExtraction.model_dump()`` (plain data,
-    so this function is testable without the reader). Rules applied:
 
-    * A trip without a printed status but listed as a paid order is taken as
-      delivered, marked INFERRED with the reason.
-    * A completion time earlier than the acceptance time on the same printed
-      date is taken to be the next day, marked INFERRED.
-    * The trip list for a period is complete only when the documents print an
-      order count for that period equal to the trips read for it.
-    * The same order shown with different statuses or dates is a conflict.
-    * The day comes from the printed date. With no year printed, the year
-      printed for that same day elsewhere in the documents is used, else
-      DEFAULT_YEAR.
-    * Without a printed order ID, trips are told apart by day and time. A
-      "order ID" printed on trips at different times is a label (e.g. a store
-      code), not an order ID. Overlapping screenshots show the same trip twice:
-      it is counted once, keeping what each copy shows.
-    * Customer tips are not counted as earnings.
+@dataclass
+class _ReadingNotes:
+    """What could not be read cleanly, collected as the documents are read.
+
+    The steps below need somewhere to record a gap or a contradiction without
+    each one having to thread two lists through its return value. Order is kept,
+    because the partner is shown these in the order they were found.
     """
-    gaps: List[str] = []
-    conflicts: List[str] = []
 
-    # -- The day of each row ---------------------------------------------------
-    raws = [dict(r) for r in extraction.get("trips") or []]
+    gaps: List[str] = field(default_factory=list)
+    conflicts: List[str] = field(default_factory=list)
+
+    def gap(self, text: str) -> None:
+        """Something the documents do not show, or show unusably."""
+        self.gaps.append(text)
+
+    def conflict(self, text: str) -> None:
+        """Two things the documents say that cannot both be true."""
+        self.conflicts.append(text)
+
+
+def _given_day(given: Any) -> Optional[date]:
+    """The reader's own ``date`` field, used when the printed text gave nothing."""
+    if isinstance(given, str) and given:
+        return date.fromisoformat(given)
+    return given if isinstance(given, date) else None
+
+
+def _loose_day(value: Any) -> Optional[date]:
+    """A date from whatever a document section put in a date field."""
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value)[:10]) if value else None
+    except ValueError:
+        return None
+
+
+def _status_of(raw: Dict[str, Any]) -> Optional[str]:
+    """The status a row shows, taking a row with an earning as delivered."""
+    label = classify_status(raw.get("status_label"))
+    return label or ("delivered" if _to_dec(raw.get("amount")) is not None else None)
+
+
+def _resolve_days(raws: List[Dict[str, Any]], notes: _ReadingNotes) -> None:
+    """Give every row its day, its clock time and a cleaned order id.
+
+    The day comes from the printed date. With no year printed, the year printed
+    for that same day elsewhere in the documents is used, and failing that
+    DEFAULT_YEAR - which is recorded as a gap, because it is a guess.
+    """
     printed = [_printed_day(r.get("date_text")) for r in raws]
     years = {(d, m): y for d, m, y in (p for p in printed if p) if y}
-    no_year: Dict[date, None] = {}
-    for raw, p in zip(raws, printed):
+    assumed_year: Dict[date, None] = {}
+    for raw, parsed in zip(raws, printed):
         day = None
-        if p:
-            d, m, y = p
+        if parsed:
+            d, m, y = parsed
             if y is None:
                 y = years.get((d, m))
             try:
@@ -423,79 +463,127 @@ def evidence_from_extraction(partner_id: str, platform: str, extraction: Dict[st
             except ValueError:
                 day = None
             if day and y is None:
-                no_year[day] = None
+                assumed_year[day] = None
         if day is None:
-            given = raw.get("date")
-            day = date.fromisoformat(given) if isinstance(given, str) and given else (
-                given if isinstance(given, date) else None)
+            day = _given_day(raw.get("date"))
         raw["_day"] = day
         # A trip card shows one time; use it whichever field the reader put it in.
         raw["_clock"] = _parse_clock(raw.get("accepted_time")) or _parse_clock(raw.get("completed_time"))
         raw["order_id"] = (raw.get("order_id") or "").strip() or None
-    for day in no_year:
-        gaps.append(f"No year is printed for {day.day} {day:%b}, so FairPay took it as {day:%d %b %Y}.")
+    for day in assumed_year:
+        notes.gap(f"No year is printed for {day.day} {day:%b}, so FairPay took it as {day:%d %b %Y}.")
 
-    # -- An "order ID" printed on trips at different times is not an order ID -----
+
+def _demote_label_order_ids(raws: List[Dict[str, Any]], notes: _ReadingNotes) -> None:
+    """Drop "order IDs" that are really labels, such as a store code.
+
+    One ID printed on trips at different times cannot identify a single order,
+    so it is removed and those trips are told apart by their time instead.
+    """
     times: Dict[str, set] = defaultdict(set)
     for raw in raws:
         if raw["order_id"] and raw["_clock"]:
             times[raw["order_id"]].add((raw["_day"], raw["_clock"]))
     labels = sorted(i for i, t in times.items() if len(t) > 1)
     for label in labels:
-        gaps.append(f"'{label}' is printed on trips at different times, so it is not an order ID; FairPay told "
-                    "those trips apart by their time.")
+        notes.gap(f"'{label}' is printed on trips at different times, so it is not an order ID; FairPay told "
+                  "those trips apart by their time.")
     for raw in raws:
         if raw["order_id"] in labels:
             raw["order_id"] = None
 
-    # -- One entry per trip; overlapping screenshots counted once ----------------
-    def _status_of(raw: Dict[str, Any]) -> Optional[str]:
-        label = classify_status(raw.get("status_label"))
-        return label or ("delivered" if _to_dec(raw.get("amount")) is not None else None)
 
-    groups: Dict[Any, List[Dict[str, Any]]] = {}
-    for index, raw in enumerate(raws, start=1):
+@dataclass
+class _TripGrouper:
+    """One entry per real trip, from rows that may each describe it twice.
+
+    Overlapping screenshots show the same trip more than once. Rows carrying an
+    order ID are grouped by it. Rows without one are told apart by day and time,
+    and a second row at the same minute showing a *different* amount is taken to
+    be a different trip rather than another copy of the same one.
+
+    Where two copies of one order disagree, the disagreement is recorded as a
+    conflict and never resolved by preferring one of them.
+    """
+
+    notes: _ReadingNotes
+    _groups: Dict[Any, List[Dict[str, Any]]] = field(default_factory=dict)
+
+    def add(self, index: int, raw: Dict[str, Any]) -> None:
+        """Place one row in its group, or report why it cannot be counted."""
         if raw["order_id"]:
-            groups.setdefault(("id", raw["order_id"]), []).append(raw)
-            continue
+            self._groups.setdefault(("id", raw["order_id"]), []).append(raw)
+            return
         if raw["_day"] is None or raw["_clock"] is None:
-            gaps.append(f"Trip {index} on the documents has no order ID or time, so it was not counted.")
-            continue
+            self.notes.gap(f"Trip {index} on the documents has no order ID or time, so it was not counted.")
+            return
+        key = self._time_key(raw)
+        copy_number = key[3]
+        hh, mm = raw["_clock"]
+        # Stands in for the order ID the documents did not print.
+        raw["order_id"] = (f"{raw['_day']:%d %b} {hh:02d}:{mm:02d}"
+                           + (f" ({copy_number + 1})" if copy_number else ""))
+        self._groups.setdefault(key, []).append(raw)
+
+    def _time_key(self, raw: Dict[str, Any]) -> Tuple[str, Any, Any, int]:
+        """The group for a row without an order ID.
+
+        Walks past any group at this minute that already shows a different
+        amount, because those are separate trips, not copies of one.
+        """
         amount = _to_dec(raw.get("amount"))
         n = 0
         while True:  # same day and time, same (or unreadable) amount = the same trip
             key = ("time", raw["_day"], raw["_clock"], n)
-            group = groups.get(key)
+            group = self._groups.get(key)
             known = {_to_dec(g.get("amount")) for g in group or []} - {None}
             if group is None or amount is None or not known or amount in known:
-                break
+                return key
             n += 1
-        hh, mm = raw["_clock"]
-        raw["order_id"] = f"{raw['_day']:%d %b} {hh:02d}:{mm:02d}" + (f" ({n + 1})" if n else "")
-        groups.setdefault(key, []).append(raw)
 
-    merged_rows: List[Dict[str, Any]] = []
-    for (kind, *_), group in groups.items():
-        first = group[0]
-        if kind == "id":
-            known = [(g, _status_of(g)) for g in group if _status_of(g)]
-            for g, status in known[1:]:
-                if status != known[0][1] or g["_day"] != known[0][0]["_day"]:
-                    conflicts.append(
-                        f"Order {first['order_id']} appears twice with different details "
-                        f"({known[0][1]} on {known[0][0]['_day']}, {status} on {g['_day']}).")
-        row = dict(first)
-        for other in group[1:]:
-            for k, v in other.items():
-                if row.get(k) in (None, "") and v not in (None, ""):
-                    row[k] = v
-        merged_rows.append(row)
+    def merged(self) -> List[Dict[str, Any]]:
+        """One row per trip, each filled in from every copy of it.
 
+        A field left blank on one copy (a cut-off amount, say) is taken from
+        another copy that shows it.
+        """
+        rows: List[Dict[str, Any]] = []
+        for (kind, *_), group in self._groups.items():
+            first = group[0]
+            if kind == "id":
+                self._record_disagreements(first, group)
+            row = dict(first)
+            for other in group[1:]:
+                for key, value in other.items():
+                    if row.get(key) in (None, "") and value not in (None, ""):
+                        row[key] = value
+            rows.append(row)
+        return rows
+
+    def _record_disagreements(self, first: Dict[str, Any], group: List[Dict[str, Any]]) -> None:
+        """Note any copy of this order that shows a different status or day."""
+        known = [(g, _status_of(g)) for g in group if _status_of(g)]
+        for g, status in known[1:]:
+            if status != known[0][1] or g["_day"] != known[0][0]["_day"]:
+                self.notes.conflict(
+                    f"Order {first['order_id']} appears twice with different details "
+                    f"({known[0][1]} on {known[0][0]['_day']}, {status} on {g['_day']}).")
+
+
+def _trip_observations(merged_rows: List[Dict[str, Any]], platform: str,
+                       notes: _ReadingNotes) -> List[TripObservation]:
+    """Turn each merged row into a trip, saying what had to be inferred.
+
+    Three inferences are possible, and each one is written onto the trip:
+    a delivery time before the acceptance time means the next day; no printed
+    status next to an earning means delivered; a customer tip is taken out of
+    the earning, because a tip is not pay.
+    """
     trips: List[TripObservation] = []
     for index, raw in enumerate(merged_rows, start=1):
         order_id, day = raw["order_id"], raw["_day"]
         accepted_clock, completed_clock = raw["_clock"], _parse_clock(raw.get("completed_time"))
-        notes: List[str] = []
+        trip_notes: List[str] = []
         accepted = completed = None
         if day and accepted_clock:
             accepted = datetime(day.year, day.month, day.day, *accepted_clock)
@@ -503,60 +591,65 @@ def evidence_from_extraction(partner_id: str, platform: str, extraction: Dict[st
             completed = datetime(day.year, day.month, day.day, *completed_clock)
             if accepted and completed < accepted:
                 completed += timedelta(days=1)
-                notes.append("Delivered after midnight: the delivery time is earlier than the acceptance "
-                             "time on the same printed date, so it was taken as the next day (inferred).")
+                trip_notes.append("Delivered after midnight: the delivery time is earlier than the acceptance "
+                                  "time on the same printed date, so it was taken as the next day (inferred).")
         if day is None:
-            gaps.append(f"Order {order_id} has no date on the documents, so it could not be placed in an incentive period.")
+            notes.gap(f"Order {order_id} has no date on the documents, so it could not be placed in an incentive period.")
             continue
 
-        printed = classify_status(raw.get("status_label"))
-        if printed is None:
-            if _to_dec(raw.get("amount")) is not None:
-                status, provenance = "delivered", "INFERRED"
-                notes.append("No status is printed; it is listed with an order earning, so it was taken as delivered (inferred).")
-            else:
-                status, provenance = "unknown", "UNKNOWN"
-        else:
-            status, provenance = printed, "OBSERVED"
-
-        orders_in_trip = raw.get("orders_in_trip")
-        pickups = raw.get("pickups_in_trip")
-        batch_id = raw.get("batch_id") or None
-        batch_kind = None
-        if (isinstance(orders_in_trip, int) and orders_in_trip > 1) or batch_id:
-            batch_kind = "multi_order"
-        if isinstance(pickups, int) and pickups > 1:
-            batch_kind = "multi_pickup"
-        if batch_kind and not batch_id:
-            batch_id = f"trip-{index}"
+        status, provenance = _trip_status(raw, trip_notes)
+        batch_id, batch_kind = _trip_batch(raw, index)
 
         earning, tip = _to_dec(raw.get("amount")), _to_dec(raw.get("tip_amount"))
         if earning is not None and tip:
             earning -= tip
-            notes.append(f"Customer tip of ₹{tip} {TIP_NOT_COUNTED}.")
+            trip_notes.append(f"Customer tip of ₹{tip} {TIP_NOT_COUNTED}.")
         trips.append(TripObservation(
             order_id=order_id, platform=platform, accepted_at=accepted, completed_at=completed,
             service_date=day, status=status, status_label=raw.get("status_label"),
             status_provenance=provenance, batch_id=batch_id, batch_kind=batch_kind,
             distance_km=_to_dec(raw.get("distance_km")), earning_amount=earning,
-            source=raw.get("source") or "documents", notes=notes,
+            source=raw.get("source") or "documents", notes=trip_notes,
         ))
+    return trips
 
-    def _day(value: Any) -> Optional[date]:
-        if isinstance(value, date):
-            return value
-        try:
-            return date.fromisoformat(str(value)[:10]) if value else None
-        except ValueError:
-            return None
 
+def _trip_status(raw: Dict[str, Any], trip_notes: List[str]) -> Tuple[str, Provenance]:
+    """The trip's status and where it came from, appending the reason if inferred."""
+    printed = classify_status(raw.get("status_label"))
+    if printed is not None:
+        return printed, "OBSERVED"
+    if _to_dec(raw.get("amount")) is not None:
+        trip_notes.append("No status is printed; it is listed with an order earning, so it was taken as delivered (inferred).")
+        return "delivered", "INFERRED"
+    return "unknown", "UNKNOWN"
+
+
+def _trip_batch(raw: Dict[str, Any], index: int) -> Tuple[Optional[str], Optional[str]]:
+    """Whether this trip carried several orders or several pickups."""
+    orders_in_trip = raw.get("orders_in_trip")
+    pickups = raw.get("pickups_in_trip")
+    batch_id = raw.get("batch_id") or None
+    batch_kind = None
+    if (isinstance(orders_in_trip, int) and orders_in_trip > 1) or batch_id:
+        batch_kind = "multi_order"
+    if isinstance(pickups, int) and pickups > 1:
+        batch_kind = "multi_pickup"
+    if batch_kind and not batch_id:
+        batch_id = f"trip-{index}"
+    return batch_id, batch_kind
+
+
+def _progress_observations(extraction: Dict[str, Any], platform: str,
+                           notes: _ReadingNotes) -> List[PlatformCountObservation]:
+    """The platform's own progress counts, each tied to the period it names."""
     progress: List[PlatformCountObservation] = []
     for raw in extraction.get("incentive_progress") or []:
-        start, end = _day(raw.get("period_start")), _day(raw.get("period_end"))
+        start, end = _loose_day(raw.get("period_start")), _loose_day(raw.get("period_end"))
         start, end = start or end, end or start
         if start is None or raw.get("completed_orders_shown") is None:
             if raw.get("completed_orders_shown") is not None:
-                gaps.append("An incentive progress figure has no dates, so it could not be matched to a period.")
+                notes.gap("An incentive progress figure has no dates, so it could not be matched to a period.")
             continue
         progress.append(PlatformCountObservation(
             platform=platform, period_start=start, period_end=end,
@@ -565,20 +658,33 @@ def evidence_from_extraction(partner_id: str, platform: str, extraction: Dict[st
             incentive_name=raw.get("incentive_name"), status_label=raw.get("status_label"),
             conditions_text=list(raw.get("conditions_text") or []), source=raw.get("source") or "documents",
         ))
+    return progress
 
-    payments = [
+
+def _payment_observations(extraction: Dict[str, Any], platform: str) -> List[IncentivePaymentObservation]:
+    """Incentive payments shown on the documents. An unreadable amount is dropped."""
+    return [
         IncentivePaymentObservation(
-            platform=platform, amount=_to_dec(raw.get("amount")), paid_on=_day(raw.get("date")),
-            period_start=_day(raw.get("period_start")), period_end=_day(raw.get("period_end")),
+            platform=platform, amount=_to_dec(raw.get("amount")), paid_on=_loose_day(raw.get("date")),
+            period_start=_loose_day(raw.get("period_start")), period_end=_loose_day(raw.get("period_end")),
             label=raw.get("label") or "", source=raw.get("source") or "documents",
         )
         for raw in extraction.get("incentive_payments") or []
         if _to_dec(raw.get("amount")) is not None
     ]
 
+
+def _metric_observations(extraction: Dict[str, Any], platform: str,
+                         notes: _ReadingNotes) -> List[MetricObservation]:
+    """Acceptance, rejection, rating and login figures, with their periods.
+
+    A figure FairPay cannot place in a period is not used, because a condition
+    can only be checked against the period it applies to.
+    """
     metrics: List[MetricObservation] = []
     for raw in extraction.get("performance") or []:
-        start, end = _day(raw.get("period_start")) or _day(raw.get("date")), _day(raw.get("period_end")) or _day(raw.get("date"))
+        start = _loose_day(raw.get("period_start")) or _loose_day(raw.get("date"))
+        end = _loose_day(raw.get("period_end")) or _loose_day(raw.get("date"))
         metric = raw.get("metric")
         if metric in ("acceptance_rate", "rejection_rate"):
             value = _rate(raw.get("value"))
@@ -587,33 +693,46 @@ def evidence_from_extraction(partner_id: str, platform: str, extraction: Dict[st
         else:
             continue
         if value is None or start is None or end is None:
-            gaps.append(f"A {str(metric).replace('_', ' ')} figure has no clear period, so it was not used.")
+            notes.gap(f"A {str(metric).replace('_', ' ')} figure has no clear period, so it was not used.")
             continue
         metrics.append(MetricObservation(platform=platform, metric=metric, value=value,
                                          period_start=start, period_end=end, source=raw.get("source") or "documents"))
     for entry in extraction.get("work_time") or []:
         if entry.get("date") and entry.get("minutes"):
-            day = _day(entry["date"])
+            day = _loose_day(entry["date"])
             metrics.append(MetricObservation(platform=platform, metric="login_minutes",
                                              value=Decimal(entry["minutes"]), period_start=day, period_end=day,
                                              start_time=entry.get("start"), end_time=entry.get("end"),
                                              source="login time on documents"))
+    return metrics
 
-    # The trips sent for a day are every trip of that day. Partners are asked
-    # for the day's entire trip history; a printed total is not required.
+
+def _trip_coverage(trips: List[TripObservation], platform: str) -> List[CoverageRange]:
+    """The days whose trip list is taken as complete.
+
+    The trips sent for a day are every trip of that day: partners are asked for
+    the day's entire trip history, so a printed total is not required.
+    """
     trip_days = sorted({t.service_date for t in trips if t.service_date})
-    trip_coverage = [CoverageRange(platform=platform, start=d, end=d,
-                                   basis="the trips you sent are taken as every trip of this day")
-                     for d in trip_days]
+    return [CoverageRange(platform=platform, start=d, end=d,
+                          basis="the trips you sent are taken as every trip of this day")
+            for d in trip_days]
 
-    payment_coverage: List[CoverageRange] = []
+
+def _payment_coverage(extraction: Dict[str, Any], platform: str) -> List[CoverageRange]:
+    """The periods a statement covers well enough to say an incentive is absent."""
+    coverage: List[CoverageRange] = []
     for raw in extraction.get("statement_periods") or []:
-        start, end = _day(raw.get("period_start")), _day(raw.get("period_end"))
+        start, end = _loose_day(raw.get("period_start")), _loose_day(raw.get("period_end"))
         if start and end and raw.get("itemizes_incentives"):
-            payment_coverage.append(CoverageRange(platform=platform, start=start, end=end,
-                                                  basis="an earnings statement that lists incentives"))
+            coverage.append(CoverageRange(platform=platform, start=start, end=end,
+                                          basis="an earnings statement that lists incentives"))
+    return coverage
 
-    # Contradictory printed figures for the same period are kept as conflicts.
+
+def _record_period_disagreements(progress: List[PlatformCountObservation],
+                                 metrics: List[MetricObservation], notes: _ReadingNotes) -> None:
+    """Note where the documents print two different figures for one period."""
     by_period: Dict[Tuple, set] = defaultdict(set)
     for obs in progress:
         by_period[("count", obs.period_start, obs.period_end, (obs.incentive_name or "").lower())].add(obs.counted_orders)
@@ -623,12 +742,53 @@ def evidence_from_extraction(partner_id: str, platform: str, extraction: Dict[st
     for (kind, start, end, _), values in by_period.items():
         if len(values) > 1:
             label = "incentive progress count" if kind == "count" else kind.replace("_", " ")
-            conflicts.append(f"The documents show different {label} figures for {start} to {end}: "
-                             + ", ".join(str(v) for v in sorted(values)) + ".")
+            notes.conflict(f"The documents show different {label} figures for {start} to {end}: "
+                           + ", ".join(str(v) for v in sorted(values)) + ".")
+
+
+def evidence_from_extraction(partner_id: str, platform: str, extraction: Dict[str, Any],
+                             region: Optional[str] = None) -> IncentiveEvidence:
+    """Normalise what was read off the documents into incentive evidence.
+
+    ``extraction`` is ``IncentiveDocumentExtraction.model_dump()`` (plain data,
+    so this function is testable without the reader). This is the order the
+    steps run in, and each one is a function above:
+
+    1. :func:`_resolve_days` - the day, time and order ID of every row.
+    2. :func:`_demote_label_order_ids` - an "order ID" printed on trips at
+       different times is a label, not an ID.
+    3. :class:`_TripGrouper` - one entry per real trip, so overlapping
+       screenshots are counted once, and contradictions are recorded.
+    4. :func:`_trip_observations` - the trips themselves, with their inferences.
+    5. The other sections of the documents: progress counts, incentive
+       payments, performance figures, and what the documents cover.
+    6. :func:`_record_period_disagreements` - two figures for one period.
+
+    Nothing here is estimated or resolved in FairPay's favour: a gap stays a
+    gap and a contradiction stays a contradiction.
+    """
+    notes = _ReadingNotes()
+
+    raws = [dict(r) for r in extraction.get("trips") or []]
+    _resolve_days(raws, notes)
+    _demote_label_order_ids(raws, notes)
+
+    grouper = _TripGrouper(notes)
+    for index, raw in enumerate(raws, start=1):
+        grouper.add(index, raw)
+    trips = _trip_observations(grouper.merged(), platform, notes)
+
+    progress = _progress_observations(extraction, platform, notes)
+    payments = _payment_observations(extraction, platform)
+    metrics = _metric_observations(extraction, platform, notes)
+    _record_period_disagreements(progress, metrics, notes)
 
     return IncentiveEvidence(
         partner_id=partner_id, source="telegram", region=region, platforms=[platform], trips=trips,
-        platform_counts=progress, payments=payments, metrics=metrics, trip_coverage=trip_coverage,
-        payment_coverage=payment_coverage, printed_offers=[p for p in progress if p.target_orders],
-        conflicts=list(dict.fromkeys(conflicts)), read_gaps=list(extraction.get("read_gaps") or []) + gaps,
+        platform_counts=progress, payments=payments, metrics=metrics,
+        trip_coverage=_trip_coverage(trips, platform),
+        payment_coverage=_payment_coverage(extraction, platform),
+        printed_offers=[p for p in progress if p.target_orders],
+        conflicts=list(dict.fromkeys(notes.conflicts)),
+        read_gaps=list(extraction.get("read_gaps") or []) + notes.gaps,
     )

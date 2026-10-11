@@ -77,10 +77,13 @@ export const SAMPLE_AUDIT_RESULTS: SampleAuditResult[] = [
   },
 ];
 
-export const SAMPLE_PLATFORM_EARNINGS = {
+// Keyed by wire name (see services/platforms.ts), the same keys the live
+// stream sends. Writing the display name "Uber Eats" here instead is what made
+// the Uber card render its starting figure forever.
+export const SAMPLE_PLATFORM_EARNINGS: Record<string, number> = {
   Zomato: 4200,
   Swiggy: 3800,
-  'Uber Eats': 2100,
+  UberEats: 2100,
 };
 
 export function formatCurrency(amount: number): string {

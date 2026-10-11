@@ -5,6 +5,10 @@ import {
   type TelegramSubmissionSummary,
 } from '../services/api';
 
+// Consecutive failed polls before the partner is told. At the default 15s
+// interval that is about 45 seconds of silence.
+const POLL_FAILURES_BEFORE_REPORTING = 3;
+
 interface TelegramAuditNoticeProps {
   partnerId: string;
   /** Hands the completed audit to the existing Audit Results display. */
@@ -28,6 +32,10 @@ export const TelegramAuditNotice: React.FC<TelegramAuditNoticeProps> = ({
   const [analysis, setAnalysis] = useState<any>(null);
   const [dismissed, setDismissed] = useState(false);
   const lastSeenId = useRef<string | null>(null);
+  // Explicit fallback states, in place of two swallowed promises.
+  const [pollError, setPollError] = useState<string | null>(null);
+  const [ackError, setAckError] = useState<string | null>(null);
+  const consecutiveFailures = useRef(0);
 
   useEffect(() => {
     if (!partnerId) return;
@@ -36,7 +44,10 @@ export const TelegramAuditNotice: React.FC<TelegramAuditNoticeProps> = ({
     const poll = async () => {
       try {
         const latest = await get_latest_telegram_audit(partnerId);
-        if (cancelled || !latest.submission || !latest.ai_analysis) return;
+        if (cancelled) return;
+        consecutiveFailures.current = 0;
+        setPollError(null);
+        if (!latest.submission || !latest.ai_analysis) return;
         // Only announce a submission we have not already shown.
         if (latest.submission.seen_on_website) return;
         if (lastSeenId.current === latest.submission.submission_id) return;
@@ -44,8 +55,19 @@ export const TelegramAuditNotice: React.FC<TelegramAuditNoticeProps> = ({
         setSubmission(latest.submission);
         setAnalysis(latest.ai_analysis);
         setDismissed(false);
-      } catch {
-        // A failed poll is not worth interrupting the page for.
+      } catch (error: unknown) {
+        if (cancelled) return;
+        // One blip between polls is not worth a banner, but a run of them
+        // means the partner is waiting for a notice that will never arrive -
+        // so it is reported rather than swallowed.
+        consecutiveFailures.current += 1;
+        if (consecutiveFailures.current >= POLL_FAILURES_BEFORE_REPORTING) {
+          setPollError(
+            error instanceof Error
+              ? `FairPay cannot check whether your Telegram audit has finished: ${error.message}`
+              : 'FairPay cannot check whether your Telegram audit has finished.',
+          );
+        }
       }
     };
 
@@ -57,29 +79,54 @@ export const TelegramAuditNotice: React.FC<TelegramAuditNoticeProps> = ({
     };
   }, [partnerId, pollIntervalMs]);
 
-  const acknowledge = async () => {
-    if (!submission) return;
+  /** Marks the submission seen. Returns false when the server refused. */
+  const acknowledge = async (): Promise<boolean> => {
+    if (!submission) return true;
     try {
       await mark_telegram_audit_seen(partnerId, submission.submission_id);
-    } catch {
-      // Acknowledging is best-effort; the notice still closes.
+      setAckError(null);
+      return true;
+    } catch (error: unknown) {
+      // The server still has this submission marked unseen, so it will be
+      // announced again. Saying so beats closing as if nothing happened.
+      setAckError(
+        error instanceof Error
+          ? `This notice could not be marked as seen (${error.message}), so it may appear again.`
+          : 'This notice could not be marked as seen, so it may appear again.',
+      );
+      return false;
     }
   };
 
   const handleView = async () => {
     onView({ status: 'Audit Complete', ai_analysis: analysis });
-    await acknowledge();
-    setDismissed(true);
+    const acknowledged = await acknowledge();
+    // Stay open when the acknowledgement failed, so its explanation can
+    // actually be read. The results are shown below either way.
+    setDismissed(acknowledged);
     const section = document.getElementById('audit-results');
     if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   const handleDismiss = async () => {
-    await acknowledge();
-    setDismissed(true);
+    setDismissed(await acknowledge());
   };
 
-  if (!submission || dismissed) return null;
+  if (!submission || dismissed) {
+    // No audit to announce, but polling is broken - which is itself worth
+    // showing, because silence here is indistinguishable from "not ready yet".
+    return pollError ? (
+      <div className="telegram-notice" role="alert">
+        <div className="telegram-notice-body">
+          <span className="telegram-notice-icon">⚠️</span>
+          <div className="telegram-notice-text">
+            <strong>Cannot reach FairPay</strong>
+            <p>{pollError}</p>
+          </div>
+        </div>
+      </div>
+    ) : null;
+  }
 
   const platforms = submission.platforms ?? [];
   const missing = submission.missing_fields ?? [];
@@ -108,6 +155,9 @@ export const TelegramAuditNotice: React.FC<TelegramAuditNoticeProps> = ({
           )}
         </div>
       </div>
+      {ackError && (
+        <p className="telegram-notice-missing" role="alert">{ackError}</p>
+      )}
       <div className="telegram-notice-actions">
         <button type="button" className="primary-button" onClick={handleView}>
           View results

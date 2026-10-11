@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { apiPost } from '../services/http';
 
 interface SyntheticFileData {
   partners: File | null;
@@ -84,8 +85,14 @@ export function SyntheticDataUpload() {
           reader.onload = (event) => {
             try {
               resolve(JSON.parse(event.target?.result as string));
-            } catch (err) {
-              reject(new Error(`Failed to parse ${file.name} as JSON`));
+            } catch (cause) {
+              // The parser's own message says *where* the JSON is malformed,
+              // which is the only actionable part. Discarding it left the
+              // partner with a file name and nothing to fix.
+              reject(new Error(
+                `Failed to parse ${file.name} as JSON: ${cause instanceof Error ? cause.message : String(cause)}`,
+                { cause },
+              ));
             }
           };
           reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
@@ -101,25 +108,20 @@ export function SyntheticDataUpload() {
         selectedFiles.groundTruthLayer2 ? parseFile(selectedFiles.groundTruthLayer2) : Promise.resolve(null),
       ]);
 
-      // Call the synthetic audit endpoint
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'}/audit/synthetic`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      // Call the synthetic audit endpoint. The base URL and the error handling
+      // come from services/http.ts, so this no longer carries its own copy of
+      // either.
+      const result = await apiPost<SyntheticAuditResponse>(
+        '/audit/synthetic',
+        {
           partners_json: partners,
           settlements_json: settlements,
           earnings_json: earnings,
           ground_truth_json: groundTruth,
           ground_truth_layer2_json: groundTruthLayer2,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ detail: 'Upload failed' }));
-        throw new Error(errorData.detail || 'Failed to run synthetic audit');
-      }
-
-      const result = await response.json();
+        },
+        'Failed to run synthetic audit',
+      );
       setUploadResult(result);
     } catch (error) {
       setUploadError(error instanceof Error ? error.message : 'Upload failed');

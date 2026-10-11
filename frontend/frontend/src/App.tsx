@@ -1,20 +1,21 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import './App.css';
 import {
   createEarningsStream,
   auditPartnerHistory,
   runIncentiveAudit,
-  get_latest_telegram_audit,
   type StreamMessage,
   type AuditResponse,
   type IncentiveAuditRequest,
   type IncentiveReport,
 } from './services/api';
+import { DEMO_INCREMENT, PLATFORMS, startingEarnings } from './services/platforms';
 import { CounterfactualSimulator } from './components/CounterfactualSimulator';
 import IncentiveAuditResult from './components/IncentiveAuditResult';
 import { SyntheticDataUpload } from './components/SyntheticDataUpload';
 import SimplifiedAuditResult from './components/SimplifiedAuditResult';
 import TelegramAuditNotice from './components/TelegramAuditNotice';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { SAMPLE_AUDIT_RESULTS, SAMPLE_PLATFORM_EARNINGS, formatCurrency, getStatusColor, type SampleAuditResult } from './services/demoData';
 
 // Partner ID for Bobby - this should come from auth in production
@@ -23,20 +24,8 @@ const PARTNER_ID = 'bobby';
 // Link to the FairPay Telegram bot, configured per environment (never hardcoded).
 const TELEGRAM_BOT_URL: string = (import.meta.env.VITE_TELEGRAM_BOT_URL || '').trim();
 
-// Platform types for live earnings
-interface PlatformEarnings {
-  platform: string;
-  earnings: number;
-  color: string;
-  icon: string;
-  incrementInterval: number; // ms - matches backend run_delivery_streams()
-}
-
-const PLATFORMS: PlatformEarnings[] = [
-  { platform: 'Zomato', earnings: 4000, color: '#E23744', icon: '🛵', incrementInterval: 5000 },
-  { platform: 'Swiggy', earnings: 3500, color: '#FC8019', icon: '📦', incrementInterval: 13000 },
-  { platform: 'Uber Eats', earnings: 1700, color: '#000000', icon: '🚗', incrementInterval: 18000 },
-];
+// Platform identity, names and demo-mode figures all come from
+// services/platforms.ts, which is the counterpart of Backend/platforms.py.
 
 // Determine if we're in demo mode (Vercel deployment)
 const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true' || typeof window !== 'undefined' && window.location.hostname !== 'localhost';
@@ -44,10 +33,13 @@ const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true' || typeof window !=
 function App() {
   // Live Earnings State - initialize with demo data if in demo mode to avoid sync setState in effect
   const [platformData, setPlatformData] = useState<Record<string, number>>(
-    isDemoMode ? SAMPLE_PLATFORM_EARNINGS : { Zomato: 4000, Swiggy: 3500, 'Uber Eats': 1700 }
+    isDemoMode ? SAMPLE_PLATFORM_EARNINGS : startingEarnings()
   );
-  const [isConnected, setIsConnected] = useState(isDemoMode); // true in demo mode
-  const wsRef = useRef<WebSocket | null>(null);
+  // The socket's own readyState - never a guess, and never set by a timer, so
+  // "Live stream active" means the socket really is open.
+  const [streamState, setStreamState] = useState<number>(WebSocket.CLOSED);
+  // Demo mode has no socket; its simulated stream is always "live".
+  const isConnected = isDemoMode || streamState === WebSocket.OPEN;
 
   // Audit result state (evidence arrives through the Telegram bot)
   const [uploadResult, setUploadResult] = useState<AuditResponse | null>(null);
@@ -63,76 +55,55 @@ function App() {
   const [isIncentiveLoading, setIsIncentiveLoading] = useState(false);
   const [incentiveError, setIncentiveError] = useState<string | null>(null);
 
-  // Demo state
-  const [demoMode] = useState(isDemoMode);
-
-  // Derive total earnings during render (avoids sync setState in effect)
-  const totalEarnings = Object.values(platformData).reduce((sum, val) => sum + val, 0);
+  // Derive total earnings during render (avoids sync setState in effect).
+  // Only the platforms the dashboard knows are summed, so a name the app does
+  // not recognise cannot quietly inflate the total.
+  const totalEarnings = PLATFORMS.reduce(
+    (sum, p) => sum + (platformData[p.id] ?? p.startingEarnings),
+    0,
+  );
 
   // Handle stream message - defined before useEffect to avoid initialization warning
   const handleStreamMessage = useCallback((message: StreamMessage) => {
-    if (message.type === 'connected') {
-      setIsConnected(true);
-    } else if (message.type === 'earnings' && message.platform && message.earnings) {
-      setPlatformData(prev => ({
-        ...prev,
-        [message.platform!]: message.earnings!,
-      }));
-    } else if (message.type === 'error') {
-      setIsConnected(false);
-      // Reconnection is handled in the api service
-      setTimeout(() => setIsConnected(true), 3000);
+    switch (message.type) {
+      case 'status':
+        setStreamState(message.readyState);
+        break;
+      case 'earnings':
+        // Keyed by the wire name the stream sends, which is the same key
+        // services/platforms.ts renders from.
+        setPlatformData(prev => ({ ...prev, [message.platform]: message.earnings }));
+        break;
+      case 'notice':
+        // The server confirms each stored message; nothing to show for it.
+        break;
     }
-  }, []);
-
-  // Keep the last Telegram incentive check on the page after a reload. A new,
-  // unseen one is still announced by TelegramAuditNotice.
-  useEffect(() => {
-    let cancelled = false;
-    get_latest_telegram_audit(PARTNER_ID)
-      .then((latest) => {
-        const analysis = latest?.ai_analysis;
-        if (cancelled || !latest?.submission?.seen_on_website || analysis?.evidence_mode !== 'incentive_audit') return;
-        setIncentiveReport((current) => current ?? {
-          incentive_audit: analysis.incentive_audit ?? null,
-          incentive_fit: analysis.incentive_fit ?? null,
-          submission_id: analysis.submission_id,
-        });
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   // Initialize WebSocket connection (only in non-demo mode)
   useEffect(() => {
-    if (demoMode) {
-      // Platform data already initialized with SAMPLE_PLATFORM_EARNINGS in useState
-      // isConnected already initialized to true for demo mode
-
-      // Simulate live earnings increment matching backend run_delivery_streams() intervals
+    if (isDemoMode) {
+      // Platform data already initialized with SAMPLE_PLATFORM_EARNINGS in useState.
+      // Simulate live earnings increments on the same cadence the backend uses
+      // (both sides read these figures from their platforms module).
       const intervals = PLATFORMS.map(p =>
         setInterval(() => {
           setPlatformData(prev => ({
             ...prev,
-            [p.platform]: (prev[p.platform] || p.earnings) + 100
+            [p.id]: (prev[p.id] ?? p.startingEarnings) + DEMO_INCREMENT,
           }));
-        }, p.incrementInterval)
+        }, p.incrementIntervalMs)
       );
 
       return () => intervals.forEach(clearInterval);
     }
 
-    const websocket = createEarningsStream(handleStreamMessage, PARTNER_ID);
-    wsRef.current = websocket;
+    const stream = createEarningsStream(handleStreamMessage, PARTNER_ID);
 
-    return () => {
-      if (websocket.readyState === WebSocket.OPEN) {
-        websocket.close();
-      }
-    };
-  }, [demoMode, handleStreamMessage]);
+    // Closes the socket whatever state it is in and stops the stream from
+    // reconnecting, so StrictMode's second run cannot leave one behind.
+    return () => stream.close();
+  }, [handleStreamMessage]);
 
   const handleDemoAudit = (index: number) => {
     setDemoAuditResult(SAMPLE_AUDIT_RESULTS[index]);
@@ -204,7 +175,7 @@ function App() {
             <a href="#audit-results" className="nav-link">Audit Results</a>
             <a href="#what-if-i-earn-more" className="nav-link">How to Earn More</a>
             <a href="#privacy" className="nav-link">Privacy</a>
-            {demoMode && (
+            {isDemoMode && (
               <span className="demo-badge">DEMO MODE</span>
             )}
           </div>
@@ -224,29 +195,28 @@ function App() {
             <div className="earnings-grid">
               {PLATFORMS.map((platform) => (
                 <div
-                  key={platform.platform}
+                  key={platform.id}
                   className="earnings-card"
-                  data-platform={platform.platform}
+                  data-platform={platform.id}
                   style={{ '--platform-color': platform.color } as React.CSSProperties}
                 >
                   <div className="platform-header">
                     <span className="platform-icon" aria-hidden="true">{platform.icon}</span>
-                    <span className="platform-name">{platform.platform}</span>
-                    {!demoMode && (
-                      <div
-                        className={`connection-indicator ${isConnected ? 'connected' : 'connecting'}`}
-                        aria-label={isConnected ? 'Connected to live stream' : 'Connecting...'}
-                      />
-                    )}
-                    {demoMode && (
-                      <div
-                        className="connection-indicator connected"
-                        aria-label="Demo mode - simulated data"
-                      />
-                    )}
+                    <span className="platform-name">{platform.displayName}</span>
+                    <div
+                      className={`connection-indicator ${isConnected ? 'connected' : 'connecting'}`}
+                      aria-label={
+                        isDemoMode
+                          ? 'Demo mode - simulated data'
+                          : isConnected
+                            ? 'Connected to live stream'
+                            : 'Connecting...'
+                      }
+                    />
                   </div>
                   <div className="earnings-amount">
-                    {formatCurrency(platformData[platform.platform] || platform.earnings)}
+                    {/* ?? not ||: an earned total of 0 is a real value. */}
+                    {formatCurrency(platformData[platform.id] ?? platform.startingEarnings)}
                   </div>
                   <div className="earnings-label">Current Session</div>
                 </div>
@@ -265,7 +235,7 @@ function App() {
 
             <div className="stream-status">
               <span className={`status-dot ${isConnected ? 'active' : 'inactive'}`} />
-              <span>{demoMode ? 'Demo mode - simulated live data' : isConnected ? 'Live stream active' : 'Connecting...'}</span>
+              <span>{isDemoMode ? 'Demo mode - simulated live data' : isConnected ? 'Live stream active' : 'Connecting...'}</span>
             </div>
 
             {/* Milestone 2 CTA: Discover how you can earn more */}
@@ -443,10 +413,10 @@ function App() {
               </p>
             </div>
 
-            {demoMode && (
+            {isDemoMode && (
               <div className="upload-area">
                 {/* Demo audit samples in demo mode */}
-                {demoMode && (
+                {isDemoMode && (
                   <div className="demo-samples">
                     <h4>Try Sample Audits</h4>
                     <p className="demo-samples-hint">Click a delivery partner to see their audit results</p>
@@ -483,6 +453,7 @@ function App() {
               <h2 className="section-title-large">Audit Results</h2>
 
               {/* Announces audits submitted through the Telegram bot. */}
+              <ErrorBoundary label="the Telegram audit notice">
               <TelegramAuditNotice
                 partnerId={PARTNER_ID}
                 onView={(result) => {
@@ -501,25 +472,35 @@ function App() {
                   setUploadResult(result);
                 }}
               />
+              </ErrorBoundary>
 
               {uploadResult || demoAuditResult || incentiveReport ? (
                 <>
                   {(uploadResult || demoAuditResult) && (
-                    <SimplifiedAuditResult
-                      predictions={uploadResult?.ai_analysis?.reconciliation_predictions || []}
-                      evidenceGaps={uploadResult?.ai_analysis?.evidence_gaps || []}
-                      uploadResult={uploadResult}
-                      demoAuditResult={demoAuditResult}
-                    />
+                    <ErrorBoundary label="your audit result">
+                      <SimplifiedAuditResult
+                        predictions={uploadResult?.ai_analysis?.reconciliation_predictions || []}
+                        evidenceGaps={uploadResult?.ai_analysis?.evidence_gaps || []}
+                        uploadResult={uploadResult}
+                        demoAuditResult={demoAuditResult}
+                      />
+                    </ErrorBoundary>
                   )}
                   {/* Why an incentive was missed, then which platform's
                       incentive structure fits, in the same results section. */}
-                  {incentiveReport && (
-                    <IncentiveAuditResult
-                      report={incentiveReport}
-                      busy={isIncentiveLoading}
-                    />
-                  )}
+                  {incentiveReport ? (
+                    <ErrorBoundary label="your incentive check">
+                      <IncentiveAuditResult
+                        report={incentiveReport}
+                        busy={isIncentiveLoading}
+                      />
+                    </ErrorBoundary>
+                  ) : isIncentiveLoading ? (
+                    <div className="incentive-loading-state" role="status" aria-live="polite">
+                      <span className="loading-spinner" />
+                      <p>Checking why your incentive wasn't paid...</p>
+                    </div>
+                  ) : null}
                 </>
               ) : (
                 <div className="audit-empty-state">
@@ -527,7 +508,7 @@ function App() {
                   <h3>No Audit Results Yet</h3>
                   <p>Send your earnings evidence to the FairPay Telegram bot to run your first compliance audit.</p>
                   <p className="empty-hint">The audit will check your pay against minimum wage laws, calculate discrepancies, and provide a verifiable receipt.</p>
-                  {demoMode && (
+                  {isDemoMode && (
                     <div className="demo-samples" style={{ marginTop: 'var(--spacing-32)' }}>
                       <p className="demo-samples-hint">Or try a sample audit:</p>
                       <div className="demo-sample-buttons">
@@ -557,9 +538,11 @@ function App() {
         </section>
 
         {/* Section 5: How to Earn More (Counterfactual Simulator) */}
-        <CounterfactualSimulator
-          initialAuditContext={uploadResult?.ai_analysis?.counterfactual_context}
-        />
+        <ErrorBoundary label="How to Earn More">
+          <CounterfactualSimulator
+            initialAuditContext={uploadResult?.ai_analysis?.counterfactual_context}
+          />
+        </ErrorBoundary>
 
         {/* Section 6: Privacy / Trust */}
         <section id="privacy" className="section privacy-section">
@@ -601,7 +584,9 @@ function App() {
         {/* Section 7: Submit Your Synthetic Data */}
         <section id="synthetic-data" className="section synthetic-data-section">
           <div className="container">
-            <SyntheticDataUpload />
+            <ErrorBoundary label="the synthetic data check">
+              <SyntheticDataUpload />
+            </ErrorBoundary>
           </div>
         </section>
 
@@ -611,7 +596,7 @@ function App() {
         <div className="container">
           <p>FairPay Engine — Empowering delivery partners with transparent earnings audit</p>
           <p className="footer-note">Built with zero-trust architecture • Personal data never stored</p>
-          {demoMode && (
+          {isDemoMode && (
             <p className="footer-note" style={{ marginTop: 'var(--spacing-8)' }}>
               Demo Mode — Connect to local backend for full functionality
             </p>

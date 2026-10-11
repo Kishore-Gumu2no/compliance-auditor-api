@@ -26,7 +26,7 @@ import re
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from typing import Dict, List, Literal, Optional, Tuple
+from typing import Dict, List, Literal, NamedTuple, Optional, Tuple
 
 from pydantic import BaseModel, Field
 
@@ -829,27 +829,25 @@ def _conflict_in_period(text: str, start: date, end: date) -> bool:
     return not days or any(start <= d <= end for d in days)
 
 
-def evaluate_period(evidence: IncentiveEvidence, resolution: RuleResolution, platform: str,
-                    start: date, end: date, incentive_type: str = "") -> PeriodEvaluation:
-    """Everything the audit says about one incentive period on one platform."""
-    base = dict(platform=platform, period_start=start, period_end=end, rule_status=resolution.status,
-                rule_note=resolution.note, retrieval_backend=resolution.retrieval_backend,
-                incentive_type=incentive_type)
-    if resolution.status != ESTABLISHED or resolution.rule is None:
-        outcome = AMBIGUOUS if resolution.status == RULE_AMBIGUOUS else INSUFFICIENT_EVIDENCE
-        return PeriodEvaluation(**base, outcome=outcome,
-                                notes=[resolution.note or RULE_NOT_ESTABLISHED_TEXT])
+# ---------------------------------------------------------------------------
+# One incentive period
+# ---------------------------------------------------------------------------
+# evaluate_period used to do all of this inline: gather conflicts, write notes,
+# resolve the target, compare counts, decide the order-target verdict and pick
+# an outcome. Each of those is a separate question with its own answer, so each
+# is now a function that can be read - and tested - on its own.
 
-    rule = resolution.rule
-    base.update(rule=rule, incentive_name=rule.incentive_name, incentive_type=rule.incentive_type)
-    trips = [t for t in evidence.trips]
-    count = count_orders(trips, rule, start, end)
-    complete = covered(evidence.trip_coverage, start, end)
 
-    counts = [c for c in evidence.platform_counts if c.period_start == start and c.period_end == end]
-    platform_values = sorted({c.counted_orders for c in counts})
+def _period_conflicts(evidence: IncentiveEvidence, rule: IncentiveRule, start: date, end: date,
+                      count: CountResult, complete: bool, platform_values: List[int],
+                      offers: List[PlatformCountObservation]) -> List[str]:
+    """Everything about this period that the evidence cannot settle.
+
+    A conflict is never resolved in FairPay's favour: it makes the whole period
+    AMBIGUOUS, because a figure two sources disagree about cannot support a
+    claim either way.
+    """
     conflicts = [c for c in evidence.conflicts if _conflict_in_period(c, start, end)]
-    offers = [o for o in evidence.printed_offers if o.period_start == start and o.period_end == end]
     offer_conflict = _offer_conflict(rule, offers) if rule.source_type != "offer_shown_in_evidence" else None
     if offer_conflict:
         conflicts.append(offer_conflict)
@@ -865,7 +863,15 @@ def evaluate_period(evidence: IncentiveEvidence, resolution: RuleResolution, pla
         if complete:
             conflicts.append(f"The platform's progress shows {platform_count} orders, but every order for this "
                              f"period is in the evidence and only {count.max_count} could count.")
+    return conflicts
 
+
+def _rule_notes(resolution: RuleResolution, rule: IncentiveRule, start: date) -> List[str]:
+    """How far the terms used here can be trusted, in the partner's words.
+
+    Every note here is a caveat about the *rule*, not about the partner: where
+    it came from, how old it is, and what it does not say.
+    """
     notes: List[str] = []
     if resolution.note:
         notes.append(resolution.note)
@@ -889,95 +895,241 @@ def evaluate_period(evidence: IncentiveEvidence, resolution: RuleResolution, pla
     if not rule.conditions_complete:
         notes.append(f"{rule.platform} does not publish the full terms of this incentive ({rule.source_reference}); "
                      "only the terms FairPay could find were checked.")
+    return notes
 
-    # -- Order target ------------------------------------------------------
-    target, reward, target_source = rule.target_orders, rule.reward_amount, "rule"
+
+class _Target(NamedTuple):
+    """The order target and reward in force, and where each came from."""
+
+    target: Optional[int]
+    reward: Optional[Decimal]
+    source: str
+    notes: List[str]
+
+
+def _resolve_target(rule: IncentiveRule, offers: List[PlatformCountObservation]) -> _Target:
+    """The target and reward this period is judged by.
+
+    The rule is preferred. Where the platform publishes no target, a single
+    unambiguous figure printed on the partner's own incentive screen is used
+    instead - and said so in a note, because that is weaker evidence. Two
+    different printed figures are not guessed between.
+    """
+    target, reward, source = rule.target_orders, rule.reward_amount, "rule"
+    notes: List[str] = []
     if target is None:
         printed = sorted({o.target_orders for o in offers if o.target_orders})
         if len(printed) == 1:
-            target, target_source = printed[0], "offer_in_evidence"
+            target, source = printed[0], "offer_in_evidence"
             notes.append(f"{rule.platform} does not publish this target; the {target}-order target is taken from "
                          "the incentive screen in your documents.")
         else:
-            target_source = "not_documented"
+            source = "not_documented"
     if reward is None:
         printed_rewards = sorted({o.reward_amount for o in offers if o.reward_amount is not None})
         if len(printed_rewards) == 1:
             reward = printed_rewards[0]
+    return _Target(target, reward, source, notes)
+
+
+def _counting_mismatch(target: Optional[int], platform_count: Optional[int],
+                       count: CountResult) -> Optional[CountingMismatch]:
+    """Where the platform counted fewer orders than FairPay can account for.
+
+    Two different findings share this shape. When even FairPay's *lowest* count
+    exceeds the platform's, orders that plainly qualify were not counted. When
+    only the highest count exceeds it, the difference rests on counting rules
+    the platform has never published - a weaker claim, and labelled as one.
+    """
+    if target is None or platform_count is None or platform_count >= count.max_count:
+        return None
+    uncertain_ids = [o.order_id for o in count.uncertain]
+    diff_definite = count.min_count - platform_count
+    if diff_definite > 0:
+        basis = "documented_rule"
+        gap = diff_definite
+        orders: List[str] = []
+        explanation = (f"The platform appears to have counted {platform_count} orders. FairPay counts "
+                       f"{count.min_count} orders that qualify under the rule, so {gap} "
+                       f"{'order appears' if gap == 1 else 'orders appear'} not to have been counted.")
+        if not uncertain_ids:
+            explanation += " The evidence does not show which orders were left out."
+            basis = "unidentified"
+    else:
+        basis = "undocumented_counting_rule"
+        gap = count.max_count - platform_count
+        orders = uncertain_ids if len(uncertain_ids) <= gap + 2 else []
+        explanation = (f"The platform appears to have counted {platform_count} orders. FairPay found "
+                       f"{count.max_count} orders that could qualify; {gap} of them "
+                       f"{'depends' if gap == 1 else 'depend'} on counting rules the platform has not documented "
+                       f"({'; '.join(q.lower() for q in count.open_questions)}).")
+    decisive = platform_count < target <= (count.min_count if basis != "undocumented_counting_rule" else count.max_count)
+    return CountingMismatch(platform_count=platform_count, fairpay_min=count.min_count,
+                            fairpay_max=count.max_count, difference=gap, basis=basis,
+                            orders=orders, explanation=explanation, decisive=decisive)
+
+
+class _TargetVerdict(NamedTuple):
+    """The order-target condition: the answer, its evidence, and its wording."""
+
+    status: str
+    provenance: Provenance
+    detail: str
+    observed: str
+
+
+def _order_target_verdict(rule: IncentiveRule, target: Optional[int], platform_count: Optional[int],
+                          count: CountResult, count_text: str, count_prov: Provenance,
+                          complete: bool) -> _TargetVerdict:
+    """Whether the order target was met, and on whose evidence.
+
+    A pure function of its arguments - no evidence, no rule store, no I/O - so
+    every path below can be reached in a test by passing numbers.
+
+    Three things decide it, in descending order of authority:
+
+    * ``target`` - absent either because the incentive is not measured by a
+      count of orders at all, or because nobody publishes the figure.
+    * ``platform_count`` - the platform's own progress figure, when the
+      documents show exactly one for this period. It outranks FairPay's count,
+      because it is the number the platform actually acted on.
+    * ``count`` - FairPay's own count, as a ``min_count``..``max_count`` range.
+      The range is wider than a single number whenever an order's eligibility
+      turns on a counting rule the platform has not documented.
+
+    UNKNOWN is returned, never FAIL, wherever the evidence cannot settle the
+    question: a target that merely *might* not have been met is not a failure.
+    """
+    # 1. The incentive is measured some other way, so there is no target to miss.
+    if target is None and (rule.target_payout_amount is not None or rule.measurable_without_order_target()):
+        return _TargetVerdict(
+            PASS, "RETRIEVED_RULE",
+            (f"This incentive has no order target: {rule.platform} measures it another way. You did "
+             f"{count_text} {'order' if count_text == '1' else 'orders'} in this period."),
+            f"{count_text} orders (this incentive sets no order target)")
+
+    # 2. There is a target, but nobody published the figure.
+    if target is None:
+        return _TargetVerdict(
+            UNKNOWN, "UNKNOWN",
+            (f"{rule.platform} does not publish the order target for this incentive, and your documents do not "
+             "show it."),
+            f"{count_text} counted by FairPay")
+
+    # 3. The platform printed its own progress figure for this period.
+    if platform_count is not None:
+        observed = f"{platform_count} counted by the platform; {count_text} by FairPay"
+        if platform_count >= target:
+            return _TargetVerdict(PASS, "OBSERVED",
+                                  f"The platform's progress shows {platform_count} of {target}.", observed)
+        if count.min_count >= target:
+            # Met on FairPay's count even though the platform's figure is short.
+            return _TargetVerdict(PASS, count_prov,
+                                  f"FairPay counts {count.min_count}; the platform shows {platform_count}.", observed)
+        if count.max_count >= target:
+            return _TargetVerdict(UNKNOWN, "UNKNOWN",
+                                  (f"The platform shows {platform_count}. The target is reached only if orders whose "
+                                   "counting is undocumented are counted."), observed)
+        return _TargetVerdict(FAIL, "OBSERVED",
+                              f"The platform's progress shows {platform_count}, and FairPay counts {count_text}.",
+                              observed)
+
+    # 4. No platform figure, so FairPay's own count has to answer it.
+    observed = f"{count_text} counted by FairPay"
+    if count.min_count >= target:
+        return _TargetVerdict(PASS, count_prov, "", observed)
+    if count.max_count < target and complete:
+        # Every order of the period is accounted for, so the shortfall is a fact.
+        return _TargetVerdict(FAIL, count_prov, "Every order for this period is in the evidence.", observed)
+    if count.max_count < target:
+        return _TargetVerdict(UNKNOWN, "UNKNOWN",
+                              ("The documents may not show every order of this period, so FairPay cannot tell whether "
+                               "more orders were done."), observed)
+    return _TargetVerdict(UNKNOWN, "UNKNOWN",
+                          "The target is reached only if orders whose counting is undocumented are counted.", observed)
+
+
+def _period_outcome(conflicts: List[str], payment: PaymentCheck, conditions: List[ConditionResult],
+                    mismatch: Optional[CountingMismatch]) -> str:
+    """The one thing this period says, from its conditions and its payment.
+
+    The order of these tests is the priority order, and it matters:
+
+    1. Anything contradictory makes the period AMBIGUOUS - nothing can be
+       claimed from evidence that disagrees with itself.
+    2. A payment that arrived ends it: the incentive was received, whatever the
+       conditions appear to say about eligibility.
+    3. A condition that definitely failed outranks a counting mismatch, because
+       the mismatch would not have changed the result anyway.
+    4. A decisive counting mismatch outranks the target condition it caused.
+    5. Anything still unknown is insufficient evidence, never a failure.
+    """
+    target_cond = conditions[0]
+    other_fails = [c for c in conditions[1:] if c.status == FAIL]
+    unknowns = [c for c in conditions if c.status == UNKNOWN]
+
+    if conflicts:
+        return AMBIGUOUS
+    if payment.status == "paid":
+        return INCENTIVE_RECEIVED
+    if payment.status == "paid_different_amount":
+        return AMBIGUOUS
+    if other_fails:
+        return ELIGIBILITY_FAILURE
+    if mismatch and mismatch.decisive:
+        return COUNTING_MISMATCH
+    if target_cond.status == FAIL:
+        return ELIGIBILITY_FAILURE
+    if unknowns:
+        return INSUFFICIENT_EVIDENCE
+    if payment.status == "not_visible":
+        return POSSIBLE_PAYMENT_FAILURE
+    return PAYMENT_NOT_OBSERVED
+
+
+def evaluate_period(evidence: IncentiveEvidence, resolution: RuleResolution, platform: str,
+                    start: date, end: date, incentive_type: str = "") -> PeriodEvaluation:
+    """Everything the audit says about one incentive period on one platform."""
+    base = dict(platform=platform, period_start=start, period_end=end, rule_status=resolution.status,
+                rule_note=resolution.note, retrieval_backend=resolution.retrieval_backend,
+                incentive_type=incentive_type)
+    if resolution.status != ESTABLISHED or resolution.rule is None:
+        outcome = AMBIGUOUS if resolution.status == RULE_AMBIGUOUS else INSUFFICIENT_EVIDENCE
+        return PeriodEvaluation(**base, outcome=outcome,
+                                notes=[resolution.note or RULE_NOT_ESTABLISHED_TEXT])
+
+    rule = resolution.rule
+    base.update(rule=rule, incentive_name=rule.incentive_name, incentive_type=rule.incentive_type)
+    trips = [t for t in evidence.trips]
+    count = count_orders(trips, rule, start, end)
+    complete = covered(evidence.trip_coverage, start, end)
+
+    counts = [c for c in evidence.platform_counts if c.period_start == start and c.period_end == end]
+    platform_values = sorted({c.counted_orders for c in counts})
+    offers = [o for o in evidence.printed_offers if o.period_start == start and o.period_end == end]
+    # The platform's own progress figure, but only when the documents show one
+    # figure for this period; two disagreeing figures are a conflict, not a count.
+    platform_count = platform_values[0] if len(platform_values) == 1 else None
+
+    conflicts = _period_conflicts(evidence, rule, start, end, count, complete, platform_values, offers)
+
+    notes = _rule_notes(resolution, rule, start)
+
+    # -- Order target ------------------------------------------------------
+    target, reward, target_source, target_notes = _resolve_target(rule, offers)
+    notes.extend(target_notes)
     count_text = (str(count.min_count) if count.min_count == count.max_count
                   else f"{count.min_count} to {count.max_count}")
     count_prov: Provenance = "INFERRED" if count.inferred else "CALCULATED"
-    mismatch: Optional[CountingMismatch] = None
-    if target is not None and platform_count is not None and platform_count < count.max_count:
-        uncertain_ids = [o.order_id for o in count.uncertain]
-        diff_definite = count.min_count - platform_count
-        if diff_definite > 0:
-            basis = "documented_rule"
-            gap = diff_definite
-            orders: List[str] = []
-            explanation = (f"The platform appears to have counted {platform_count} orders. FairPay counts "
-                           f"{count.min_count} orders that qualify under the rule, so {gap} "
-                           f"{'order appears' if gap == 1 else 'orders appear'} not to have been counted.")
-            if not uncertain_ids:
-                explanation += " The evidence does not show which orders were left out."
-                basis = "unidentified"
-        else:
-            basis = "undocumented_counting_rule"
-            gap = count.max_count - platform_count
-            orders = uncertain_ids if len(uncertain_ids) <= gap + 2 else []
-            explanation = (f"The platform appears to have counted {platform_count} orders. FairPay found "
-                           f"{count.max_count} orders that could qualify; {gap} of them "
-                           f"{'depends' if gap == 1 else 'depend'} on counting rules the platform has not documented "
-                           f"({'; '.join(q.lower() for q in count.open_questions)}).")
-        decisive = platform_count < target <= (count.min_count if basis != "undocumented_counting_rule" else count.max_count)
-        mismatch = CountingMismatch(platform_count=platform_count, fairpay_min=count.min_count,
-                                    fairpay_max=count.max_count, difference=gap, basis=basis,
-                                    orders=orders, explanation=explanation, decisive=decisive)
+    mismatch = _counting_mismatch(target, platform_count, count)
 
-    if target is None and (rule.target_payout_amount is not None or rule.measurable_without_order_target()):
-        # The rule is measured by earnings or by conditions, not by a count of
-        # orders, so there is no order target to pass or fail.
-        status, prov = PASS, "RETRIEVED_RULE"
-        detail = (f"This incentive has no order target: {rule.platform} measures it another way. You did "
-                  f"{count_text} {'order' if count_text == '1' else 'orders'} in this period.")
-        observed = f"{count_text} orders (this incentive sets no order target)"
-    elif target is None:
-        status, prov = UNKNOWN, "UNKNOWN"
-        detail = (f"{rule.platform} does not publish the order target for this incentive, and your documents do not "
-                  "show it.")
-        observed = f"{count_text} counted by FairPay"
-    elif platform_count is not None:
-        if platform_count >= target:
-            status, prov, detail = PASS, "OBSERVED", f"The platform's progress shows {platform_count} of {target}."
-        elif count.min_count >= target:
-            status, prov = PASS, count_prov
-            detail = f"FairPay counts {count.min_count}; the platform shows {platform_count}."
-        elif count.max_count >= target:
-            status, prov = UNKNOWN, "UNKNOWN"
-            detail = (f"The platform shows {platform_count}. The target is reached only if orders whose counting is "
-                      "undocumented are counted.")
-        else:
-            status, prov = FAIL, "OBSERVED"
-            detail = f"The platform's progress shows {platform_count}, and FairPay counts {count_text}."
-        observed = f"{platform_count} counted by the platform; {count_text} by FairPay"
-    else:
-        observed = f"{count_text} counted by FairPay"
-        if count.min_count >= target:
-            status, prov, detail = PASS, count_prov, ""
-        elif count.max_count < target and complete:
-            status, prov, detail = FAIL, count_prov, "Every order for this period is in the evidence."
-        elif count.max_count < target:
-            status, prov = UNKNOWN, "UNKNOWN"
-            detail = ("The documents may not show every order of this period, so FairPay cannot tell whether "
-                      "more orders were done.")
-        else:
-            status, prov = UNKNOWN, "UNKNOWN"
-            detail = "The target is reached only if orders whose counting is undocumented are counted."
+    verdict = _order_target_verdict(rule, target, platform_count, count, count_text, count_prov, complete)
     target_required = (f"{target} orders" if target is not None
-                       else ("no order target" if status == PASS else "not published"))
+                       else ("no order target" if verdict.status == PASS else "not published"))
     conditions = [ConditionResult(condition="order_target", label="Order target",
                                   required=target_required,
-                                  observed=observed, status=status, provenance=prov, detail=detail)]
+                                  observed=verdict.observed, status=verdict.status,
+                                  provenance=verdict.provenance, detail=verdict.detail)]
 
     for cond in (
         _rate_condition(rule.min_acceptance_rate, evidence.metrics, "acceptance_rate", start, end, minimum=True),
@@ -1004,31 +1156,10 @@ def evaluate_period(evidence: IncentiveEvidence, resolution: RuleResolution, pla
     payment = check_payment(evidence, resolution, start, end, reward)
 
     # -- Outcome -----------------------------------------------------------
-    target_cond = conditions[0]
-    other_fails = [c for c in conditions[1:] if c.status == FAIL]
-    unknowns = [c for c in conditions if c.status == UNKNOWN]
     shortfall = None
-    if target_cond.status == FAIL and target is not None:
+    if conditions[0].status == FAIL and target is not None:
         shortfall = target - max(count.max_count, platform_count or 0)
-
-    if conflicts:
-        outcome = AMBIGUOUS
-    elif payment.status == "paid":
-        outcome = INCENTIVE_RECEIVED
-    elif payment.status == "paid_different_amount":
-        outcome = AMBIGUOUS
-    elif other_fails:
-        outcome = ELIGIBILITY_FAILURE
-    elif mismatch and mismatch.decisive:
-        outcome = COUNTING_MISMATCH
-    elif target_cond.status == FAIL:
-        outcome = ELIGIBILITY_FAILURE
-    elif unknowns:
-        outcome = INSUFFICIENT_EVIDENCE
-    elif payment.status == "not_visible":
-        outcome = POSSIBLE_PAYMENT_FAILURE
-    else:
-        outcome = PAYMENT_NOT_OBSERVED
+    outcome = _period_outcome(conflicts, payment, conditions, mismatch)
 
     return PeriodEvaluation(
         **base, count=count, platform_count=platform_count, conditions=conditions, payment=payment,

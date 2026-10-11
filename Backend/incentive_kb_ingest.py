@@ -113,9 +113,9 @@ def contract_rule(row: Dict[str, Any], contract: Dict[str, Any]) -> Optional[Inc
 def load_contract_rules() -> List[IncentiveRule]:
     from psycopg.rows import dict_row
 
-    from real_data import conn
+    import db
 
-    with conn.cursor(row_factory=dict_row) as cur:
+    with db.session() as cx, cx.cursor(row_factory=dict_row) as cur:
         cur.execute("SELECT * FROM contracts")
         contracts = {(c["platform"], c["version_id"]): c for c in cur.fetchall()}
         cur.execute("SELECT * FROM platform_rules WHERE rule_type IN ('BONUS_DAILY_TARGET', 'BONUS_WEEKLY_TARGET')"

@@ -1,0 +1,321 @@
+- generic [ref=f5e3]:
+  - navigation [ref=f5e4]:
+    - generic [ref=f5e5]:
+      - generic [ref=f5e6]:
+        - generic [ref=f5e7]: ⚖️
+        - generic [ref=f5e8]: FairPay Engine
+      - generic [ref=f5e9]:
+        - link "Earnings" [ref=f5e10] [cursor=pointer]:
+          - /url: "#live-earnings"
+        - link "The Problem" [ref=f5e11] [cursor=pointer]:
+          - /url: "#why-fairpay"
+        - link "Send Evidence" [ref=f5e12] [cursor=pointer]:
+          - /url: "#evidence-upload"
+        - link "Audit Results" [ref=f5e13] [cursor=pointer]:
+          - /url: "#audit-results"
+        - link "How to Earn More" [ref=f5e14] [cursor=pointer]:
+          - /url: "#what-if-i-earn-more"
+        - link "Privacy" [ref=f5e15] [cursor=pointer]:
+          - /url: "#privacy"
+  - main [ref=f5e16]:
+    - generic [ref=f5e18]:
+      - generic [ref=f5e19]:
+        - generic [ref=f5e20]: LIVE
+        - heading "Live Earnings for Bobby" [level=1] [ref=f5e21]
+        - paragraph [ref=f5e22]: Real-time earnings tracking across all delivery platforms
+      - generic [ref=f5e23]:
+        - generic [ref=f5e24]:
+          - generic [ref=f5e25]:
+            - generic [aria-hidden] [ref=f5e26]: 🛵
+            - generic [ref=f5e27]: Zomato
+            - generic "Connected to live stream" [ref=f5e234]
+          - generic [ref=f5e29]: ₹1,08,100
+          - generic [ref=f5e30]: Current Session
+        - generic [ref=f5e31]:
+          - generic [ref=f5e32]:
+            - generic [aria-hidden] [ref=f5e33]: 📦
+            - generic [ref=f5e34]: Swiggy
+            - generic "Connected to live stream" [ref=f5e235]
+          - generic [ref=f5e36]: ₹3,500
+          - generic [ref=f5e37]: Current Session
+        - generic [ref=f5e38]:
+          - generic [ref=f5e39]:
+            - generic [aria-hidden] [ref=f5e40]: 🚗
+            - generic [ref=f5e41]: Uber Eats
+            - generic "Connected to live stream" [ref=f5e236]
+          - generic [ref=f5e43]: ₹1,700
+          - generic [ref=f5e44]: Current Session
+        - generic [ref=f5e45]:
+          - generic [ref=f5e46]:
+            - generic [aria-hidden] [ref=f5e47]: 💰
+            - generic [ref=f5e48]: Total Earnings
+          - generic [ref=f5e49]: ₹1,13,300
+          - generic [ref=f5e50]: Across All Platforms
+      - generic [ref=f5e51]: Live stream active
+      - button "Check your 30 day audit" [ref=f5e55] [cursor=pointer]
+    - generic [ref=f5e58]:
+      - generic [ref=f5e59]:
+        - generic [ref=f5e60]: THE PROBLEM
+        - heading "Don't you think it is difficult for our delivery partners to track their earnings from several platforms such as Zomato, Swiggy, Uber Eats and many more?" [level=2] [ref=f5e61]
+        - paragraph [ref=f5e62]: Every day, delivery partners like Bobby juggle multiple apps, each with different payout structures, incentive schemes, and payment cycles. Manually tracking earnings across platforms is time-consuming, error-prone, and leaves partners vulnerable to discrepancies.
+      - generic [ref=f5e63]:
+        - generic [ref=f5e64]:
+          - generic [ref=f5e65]: 🎯
+          - heading "One Place to Track" [level=3] [ref=f5e66]
+          - paragraph [ref=f5e67]: Consolidated view of earnings from all delivery platforms in real-time.
+        - generic [ref=f5e68]:
+          - generic [ref=f5e69]: 🔍
+          - heading "Audit & Verify" [level=3] [ref=f5e70]
+          - paragraph [ref=f5e71]: Automated audit engine checks your pay against local labor laws and minimum wages.
+        - generic [ref=f5e72]:
+          - generic [ref=f5e73]: 🛡️
+          - heading "Zero-Trust Evidence" [level=3] [ref=f5e74]
+          - paragraph [ref=f5e75]: Send evidence securely through Telegram — your personal data is redacted before any analysis.
+        - generic [ref=f5e76]:
+          - generic [ref=f5e77]: 📊
+          - heading "Transparent Results" [level=3] [ref=f5e78]
+          - paragraph [ref=f5e79]: Get detailed audit reports with receipt IDs, discrepancy calculations, and explanations.
+    - generic [ref=f5e81]:
+      - generic [ref=f5e82]:
+        - generic [ref=f5e83]:
+          - generic [ref=f5e84]: EVIDENCE
+          - heading "Send Your Evidence on Telegram" [level=2] [ref=f5e85]
+          - paragraph [ref=f5e86]: Uploading docs on website? Nah that's the old way, let's do it on Telegram so that you can know which documents or photos to send by particularly selecting and sending them to our bot. EASY SIMPLE CONVENIENT
+        - generic [ref=f5e87]:
+          - heading "Supported documents" [level=3] [ref=f5e88]
+          - list [ref=f5e89]:
+            - listitem [ref=f5e90]:
+              - generic [aria-hidden] [ref=f5e91]: 📸
+              - generic [ref=f5e92]:
+                - strong [ref=f5e93]: Earnings Screenshots
+                - generic [ref=f5e94]: Platform earnings screenshots and payment confirmations
+            - listitem [ref=f5e95]:
+              - generic [aria-hidden] [ref=f5e96]: 📄
+              - generic [ref=f5e97]:
+                - strong [ref=f5e98]: Shift Records
+                - generic [ref=f5e99]: Work schedules, shift timings, and hours logged
+            - listitem [ref=f5e100]:
+              - generic [aria-hidden] [ref=f5e101]: 💳
+              - generic [ref=f5e102]:
+                - strong [ref=f5e103]: Payment Records
+                - generic [ref=f5e104]: Bank statements, UPI transactions, and payout receipts
+            - listitem [ref=f5e105]:
+              - generic [aria-hidden] [ref=f5e106]: 📋
+              - generic [ref=f5e107]:
+                - strong [ref=f5e108]: Other Documents
+                - generic [ref=f5e109]: Contracts, offer letters, and platform policies
+      - generic [ref=f5e110]:
+        - heading "Choose what to check, then send it on Telegram" [level=3] [ref=f5e111]
+        - generic [ref=f5e112]:
+          - generic [ref=f5e113]:
+            - strong [ref=f5e114]: Option 1 — Didn't get your incentive?
+            - generic [ref=f5e115]: Send one full day of trips, every single one, plus the incentive screen if you have it. FairPay then tells you what the incentive needed and why it was not paid.
+            - link "Open Telegram and send a day's trips" [ref=f5e116] [cursor=pointer]:
+              - /url: https://t.me/FairPay_Submission_Bot
+          - generic [ref=f5e117]:
+            - strong [ref=f5e118]: Option 2 — Full audit
+            - generic [ref=f5e119]: Send all your orders and payments for a period. PDF statements work best. FairPay matches every order with its payment and shows any money that may be missing.
+            - link "Open Telegram and send statements" [ref=f5e120] [cursor=pointer]:
+              - /url: https://t.me/FairPay_Submission_Bot
+        - paragraph [ref=f5e121]:
+          - text: The bot asks you to choose Option 1 or Option 2 after you send
+          - code [ref=f5e122]: /start
+          - text: ", then link your data with"
+          - code [ref=f5e123]: /link
+          - text: and your ID. Your results appear on this page.
+    - generic [ref=f5e126]:
+      - generic [ref=f5e127]: RESULTS
+      - heading "Audit Results" [level=2] [ref=f5e128]
+      - generic [ref=f5e259]:
+        - generic [ref=f5e260]:
+          - heading "FairPay — Full Audit" [level=3] [ref=f5e261]
+          - generic [ref=f5e262]:
+            - generic [ref=f5e263]:
+              - strong [ref=f5e264]: "Partner:"
+              - text: Bobby
+            - generic [ref=f5e265]:
+              - strong [ref=f5e267]: "Platform:"
+              - combobox "Select platform to filter audit results" [ref=f5e268] [cursor=pointer]:
+                - option "All" [selected]
+                - option "Swiggy"
+                - option "Uber Eats"
+                - option "Zomato"
+            - generic [ref=f5e269]:
+              - strong [ref=f5e270]: "Period:"
+              - text: 21 Aug 2026 – 19 Sept 2026
+        - generic [ref=f5e273]:
+          - generic [ref=f5e274]: Hours worked (all apps)
+          - generic [ref=f5e275]: 196.9 h
+        - status [ref=f5e276]:
+          - generic [ref=f5e277]: Paid correctly
+          - paragraph [ref=f5e278]: You were paid correctly for all 341 orders.
+        - generic [ref=f5e280]:
+          - generic [ref=f5e281]:
+            - generic [ref=f5e282]: You earned
+            - generic [ref=f5e283]: ₹25,553
+          - generic [ref=f5e284]:
+            - generic [ref=f5e285]: You were paid
+            - generic [ref=f5e286]: ₹25,553
+          - generic [ref=f5e287]:
+            - generic [ref=f5e288]: Orders checked
+            - generic [ref=f5e289]: "341"
+        - generic [ref=f5e290]:
+          - heading "Order by order" [level=4] [ref=f5e291]
+          - paragraph [ref=f5e292]: All 341 orders were paid correctly, so none are listed here.
+      - generic [ref=f5e293]:
+        - generic [ref=f5e294]:
+          - heading "Why didn't I get my incentive?" [level=3] [ref=f5e295]
+          - generic [ref=f5e296]:
+            - generic [ref=f5e297]:
+              - heading "What the incentive required" [level=4] [ref=f5e298]
+              - list [ref=f5e299]:
+                - listitem [ref=f5e300]: Complete 8 orders
+                - listitem [ref=f5e301]: Earn ₹90
+            - generic [ref=f5e302]:
+              - heading "What FairPay found" [level=4] [ref=f5e303]
+              - list [ref=f5e304]:
+                - listitem [ref=f5e305]: You completed 6 orders
+                - listitem [ref=f5e306]: You were 2 orders short
+        - generic [ref=f5e307]:
+          - heading "Which incentive structure fits you better?" [level=3] [ref=f5e308]
+          - generic [ref=f5e309]:
+            - generic [ref=f5e310]:
+              - generic [ref=f5e311]: Best fit
+              - generic [ref=f5e312]: UberEats
+              - paragraph [ref=f5e313]: You reached the target on 5 of 5 days.
+            - generic [ref=f5e314]:
+              - generic [ref=f5e315]:
+                - generic [ref=f5e316]: Orders a day
+                - generic [ref=f5e317]: "6"
+              - generic [ref=f5e318]:
+                - generic [ref=f5e319]: Target
+                - generic [ref=f5e320]: "4"
+              - generic [ref=f5e321]:
+                - generic [ref=f5e322]: Bonus
+                - generic [ref=f5e323]: ₹40
+          - table [ref=f5e325]:
+            - rowgroup [ref=f5e326]:
+              - row [ref=f5e327]:
+                - columnheader "Platform" [ref=f5e328]
+                - columnheader "Orders needed" [ref=f5e329]
+                - columnheader "Bonus" [ref=f5e330]
+                - columnheader "Did you reach it?" [ref=f5e331]
+            - rowgroup [ref=f5e332]:
+              - row [ref=f5e333]:
+                - cell "UberEats" [ref=f5e334]
+                - cell "4" [ref=f5e335]
+                - cell "₹40" [ref=f5e336]
+                - cell "5 of 5 days" [ref=f5e337]
+              - row [ref=f5e339]:
+                - cell "Swiggy" [ref=f5e340]
+                - cell "8" [ref=f5e341]
+                - cell "₹90" [ref=f5e342]
+                - cell "2 of 5 days" [ref=f5e343]
+              - row [ref=f5e345]:
+                - cell "Zomato" [ref=f5e346]
+                - cell "7" [ref=f5e347]
+                - cell "₹80" [ref=f5e348]
+                - cell "2 of 5 days" [ref=f5e349]
+    - generic [ref=f5e135]:
+      - generic [ref=f5e136]:
+        - generic [ref=f5e137]: WHAT IF
+        - heading "How to Earn More" [level=2] [ref=f5e138]
+        - paragraph [ref=f5e139]: See how working different hours, working more or fewer days, or spending less on fuel could change your earnings.
+      - generic [ref=f5e140]:
+        - generic [ref=f5e141]:
+          - generic [ref=f5e142]:
+            - heading "Choose How to Explore" [level=3] [ref=f5e143]
+            - tablist [ref=f5e144]:
+              - tab "Earn More" [ref=f5e145] [cursor=pointer]
+              - tab "Describe a Change" [selected] [ref=f5e146] [cursor=pointer]
+              - tab "History" [ref=f5e147] [cursor=pointer]
+          - generic [ref=f5e237]:
+            - heading "Platform" [level=3] [ref=f5e238]
+            - combobox [ref=f5e239] [cursor=pointer]:
+              - option "Zomato"
+              - option "Swiggy" [selected]
+              - option "Uber Eats"
+          - generic [ref=f5e240]:
+            - heading "Describe a Change" [level=3] [ref=f5e241]
+            - paragraph [ref=f5e242]: Type a change in your own words, like "increase peak hour bonus by 20%".
+            - paragraph [ref=f5e243]: Ask about a specific, numeric change to pay, incentives, bonuses, fuel or other costs — FairPay calculates the real impact from your own figures, it never invents them. It cannot answer questions with no number to calculate, such as legal advice or anything unrelated to your earnings.
+            - generic [ref=f5e244]:
+              - button "Increase peak hour incentive by 20%" [active] [ref=f5e245] [cursor=pointer]:
+                - generic [aria-hidden] [ref=f5e246]: ▲
+                - text: Increase peak hour incentive by 20%
+              - button "Add a ₹50 bonus for every order above 20 in a day" [ref=f5e247] [cursor=pointer]:
+                - generic [aria-hidden] [ref=f5e248]: ▲
+                - text: Add a ₹50 bonus for every order above 20 in a day
+              - button "Reduce fuel cost per order by 15%" [ref=f5e249] [cursor=pointer]:
+                - generic [aria-hidden] [ref=f5e250]: ▲
+                - text: Reduce fuel cost per order by 15%
+              - button "Cut per-order base pay by 10%" [ref=f5e251] [cursor=pointer]:
+                - generic [aria-hidden] [ref=f5e252]: ▼
+                - text: Cut per-order base pay by 10%
+              - button "Remove the weekend incentive bonus" [ref=f5e253] [cursor=pointer]:
+                - generic [aria-hidden] [ref=f5e254]: ▼
+                - text: Remove the weekend incentive bonus
+            - textbox "e.g., Increase peak hour incentive by 15% for weekend shifts" [ref=f5e255]: Increase peak hour incentive by 20%
+            - button "See What Changes" [ref=f5e256]
+        - generic [ref=f5e351]:
+          - generic [ref=f5e352]: 🔮
+          - heading "No Simulation Yet" [level=4] [ref=f5e353]
+          - paragraph [ref=f5e354]: Choose what you would like to change, then click "See What Changes" to see results.
+    - generic [ref=f5e168]:
+      - generic [ref=f5e169]: PRIVACY
+      - heading "Your Privacy is Non-Negotiable" [level=2] [ref=f5e170]
+      - generic [ref=f5e171]:
+        - generic [ref=f5e172]:
+          - generic [ref=f5e173]: 🔒
+          - heading "PII Redaction" [level=3] [ref=f5e174]
+          - paragraph [ref=f5e175]: All personal identifiers — names, phone numbers, email addresses, Aadhaar, PAN — are automatically detected and masked before any AI processing.
+        - generic [ref=f5e176]:
+          - generic [ref=f5e177]: 🚫
+          - heading "No Data Storage" [level=3] [ref=f5e178]
+          - paragraph [ref=f5e179]: Documents you send through Telegram are deleted as soon as the audit finishes. The trips read from them — their times and amounts — are deleted too, as soon as you have been shown your result.
+        - generic [ref=f5e180]:
+          - generic [ref=f5e181]: 🔐
+          - heading "Zero-Trust Architecture" [level=3] [ref=f5e182]
+          - paragraph [ref=f5e183]: Names, phone numbers and other personal details are blacked out before the AI ever sees a document. FairPay keeps your partner ID with your result, so it knows whose result to show you.
+        - generic [ref=f5e184]:
+          - generic [ref=f5e185]: 📜
+          - heading "Audit Transparency" [level=3] [ref=f5e186]
+          - paragraph [ref=f5e187]: Every audit generates an immutable SHA-256 receipt hash. You can verify the integrity of your audit at any time.
+      - paragraph [ref=f5e189]:
+        - strong [ref=f5e190]: FairPay Engine does not store your personal details.
+        - text: What is kept is your result — the amounts worked out, whether the conditions were met, and the receipt — stored under your partner ID so it can be shown back to you. FairPay also remembers which Telegram chat that ID belongs to; send
+        - strong [ref=f5e191]: /unlink
+        - text: to the bot and it forgets the chat and your past results.
+    - generic [ref=f5e194]:
+      - generic [ref=f5e195]:
+        - generic [ref=f5e196]: SYNTHETIC
+        - heading "Submit your Synthetic Data" [level=2] [ref=f5e197]
+      - generic [ref=f5e199]:
+        - generic [ref=f5e200]:
+          - generic [ref=f5e202] [cursor=pointer]:
+            - generic [ref=f5e203]: 📄
+            - generic [ref=f5e204]: partners.json *
+            - button "📄 partners.json *" [ref=f5e205]
+          - generic [ref=f5e207] [cursor=pointer]:
+            - generic [ref=f5e208]: 📄
+            - generic [ref=f5e209]: settlements.json *
+            - button "📄 settlements.json *" [ref=f5e210]
+          - generic [ref=f5e212] [cursor=pointer]:
+            - generic [ref=f5e213]: 📄
+            - generic [ref=f5e214]: earnings.json *
+            - button "📄 earnings.json *" [ref=f5e215]
+          - generic [ref=f5e217] [cursor=pointer]:
+            - generic [ref=f5e218]: 📄
+            - generic [ref=f5e219]: ground_truth.json *
+            - button "📄 ground_truth.json *" [ref=f5e220]
+          - generic [ref=f5e222] [cursor=pointer]:
+            - generic [ref=f5e223]: 📄
+            - generic [ref=f5e224]: ground_truth_layer2.json
+            - button "📄 ground_truth_layer2.json" [ref=f5e225]
+        - button "Run Synthetic Verification" [disabled] [ref=f5e226]:
+          - generic [aria-hidden] [ref=f5e227]: ⚙️
+        - paragraph [ref=f5e229]: All files must be valid JSON. Ground truth is used for evaluation only — never for predictions.
+  - contentinfo [ref=f5e230]:
+    - generic [ref=f5e231]:
+      - paragraph [ref=f5e232]: FairPay Engine — Empowering delivery partners with transparent earnings audit
+      - paragraph [ref=f5e233]: Built with zero-trust architecture • Personal data never stored

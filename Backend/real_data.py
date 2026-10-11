@@ -3,11 +3,13 @@
 from collections import defaultdict
 from datetime import date
 from decimal import Decimal
-from typing import Any, Literal
-import os
-import psycopg
+from typing import Any, Literal, Optional
+from psycopg import Connection
 from psycopg.rows import dict_row
 from pydantic import BaseModel, Field
+
+import db
+from platforms import platform_key
 
 from models import (
     ContractVersion,
@@ -19,20 +21,10 @@ from models import (
 )
 from reconciliation import DATE_TOLERANCE_DAYS, AnomalyType, classify_single
 
-from dotenv import load_dotenv
+# Connections come from the pool in db.py. Every loader below takes an optional
+# ``conn``: pass one to run several loaders in a single transaction, or leave it
+# out to borrow a connection for the call. See db.session.
 
-load_dotenv()
-
-# Database connection settings come from the environment. The defaults are the
-# local values used when running directly on the host (Postgres published on
-# localhost:54322); docker-compose overrides them with the `db` service.
-conn = psycopg.connect(
-    host=os.getenv("DB_HOST", "localhost"),
-    port=int(os.getenv("DB_PORT", "54322")),
-    dbname=os.getenv("DB_NAME", "postgres"),
-    user=os.getenv("DB_USER", "postgres"),
-    password=os.getenv("DB_PASSWORD", "postgres"),
-)
 
 class ExtractedFinancialRecord(BaseModel):
     record_type: Literal["earning", "settlement"]
@@ -165,13 +157,13 @@ def _prediction(earning: ExtractedFinancialRecord, transaction_id: str, anomaly:
 # =====================================================================
 
 
-def load_partner_profile(partner_id: str) -> PartnerProfile:
+def load_partner_profile(partner_id: str, conn: Optional[Connection] = None) -> PartnerProfile:
     """Build a PartnerProfile from the partners table.
 
     Shared by the 30-day history loader and by submission channels (such as
     Telegram) that have a partner_id but no client-supplied profile JSON.
     """
-    with conn.cursor(row_factory=dict_row) as cur:
+    with db.session(conn) as cx, cx.cursor(row_factory=dict_row) as cur:
         cur.execute(
             "SELECT * FROM partners WHERE partner_id = %s",
             (partner_id,)
@@ -303,30 +295,28 @@ def _normalize_clauses(db_clauses: list[dict]) -> list[str]:
     return normalized
 
 
-def _platform_key(name: str) -> str:
-    """'Uber Eats', 'ubereats' and 'UberEats' name the same platform."""
-    return "".join(ch for ch in (name or "").lower() if ch.isalnum())
-
-
-def load_platform_contracts(platform: str) -> list[dict[str, Any]]:
+def load_platform_contracts(platform: str, conn: Optional[Connection] = None) -> list[dict[str, Any]]:
     """Contract terms on file for one platform, built the same way the history
     audit builds them.
 
     Returns ``[{"contract": ContractVersion, "title", "status", "source"}]``.
     Draft contracts are left out. An empty list means no terms are on file.
     """
-    key = _platform_key(platform)
-    with conn.cursor(row_factory=dict_row) as cur:
-        cur.execute("SELECT * FROM contracts WHERE status <> 'DRAFT'")
-        rows = [c for c in cur.fetchall() if _platform_key(c["platform"]) == key]
-    if not rows:
-        return []
-    with conn.cursor(row_factory=dict_row) as cur:
-        cur.execute(
-            "SELECT * FROM platform_rules WHERE contract_version = ANY(%s)",
-            ([c["version_id"] for c in rows],),
-        )
-        rules = cur.fetchall() or []
+    key = platform_key(platform)
+    # Both reads share one connection, so the rules always match the contracts
+    # they were selected for.
+    with db.session(conn) as cx:
+        with cx.cursor(row_factory=dict_row) as cur:
+            cur.execute("SELECT * FROM contracts WHERE status <> 'DRAFT'")
+            rows = [c for c in cur.fetchall() if platform_key(c["platform"]) == key]
+        if not rows:
+            return []
+        with cx.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                "SELECT * FROM platform_rules WHERE contract_version = ANY(%s)",
+                ([c["version_id"] for c in rows],),
+            )
+            rules = cur.fetchall() or []
     rules_by_contract = defaultdict(list)
     for rule in rules:
         rules_by_contract[rule["contract_version"]].append(rule)
@@ -352,19 +342,15 @@ def load_platform_contracts(platform: str) -> list[dict[str, Any]]:
     return result
 
 
-def load_partner_history_from_db(partner_id: str) -> dict[str, Any]:
-    """
-    Load a partner's 30-day transaction history from Supabase views/tables
-    and build the inputs needed for run_audit().
-    """
+def _read_history_rows(partner_id: str, cx: Connection) -> dict[str, Any]:
+    """Every database read the 30-day history audit needs, on one connection."""
     # 1. Fetch transaction records from the API-facing view
-    with conn.cursor(row_factory=dict_row) as cur:
+    with cx.cursor(row_factory=dict_row) as cur:
         cur.execute(
             "SELECT * FROM v_transaction_records WHERE partner_id = %s ORDER BY completed_timestamp",
             (partner_id,)
         )
-        rows = cur.fetchall()
-    tx_rows = rows
+        tx_rows = cur.fetchall()
 
     if not tx_rows:
         raise ValueError(f"No transaction records found for partner {partner_id}")
@@ -373,26 +359,51 @@ def load_partner_history_from_db(partner_id: str) -> dict[str, Any]:
     platforms = list(set(tx["platform"] for tx in tx_rows))
     contract_versions_used = list(set(tx["contract_version"] for tx in tx_rows))
 
-    with conn.cursor(row_factory=dict_row) as cur:
+    with cx.cursor(row_factory=dict_row) as cur:
         cur.execute(
             "SELECT * FROM contracts WHERE platform = ANY(%s)",
             (platforms,)
         )
         all_contracts = cur.fetchall()
 
-    # Filter to only the contract versions actually used
-    contracts = [c for c in all_contracts if c["version_id"] in contract_versions_used]
-
     # 3. Fetch platform rules for those contract versions
-    with conn.cursor(row_factory=dict_row) as cur:
+    with cx.cursor(row_factory=dict_row) as cur:
         cur.execute(
             "SELECT * FROM platform_rules WHERE contract_version = ANY(%s)",
             (contract_versions_used,)
         )
         platform_rules = cur.fetchall() or []
 
-    # 4./5. Fetch partner profile (shared loader, single source of truth)
-    partner_profile = load_partner_profile(partner_id)
+    return {
+        "tx_rows": tx_rows,
+        "platforms": platforms,
+        # Only the contract versions this partner's transactions actually used.
+        "contracts": [c for c in all_contracts if c["version_id"] in contract_versions_used],
+        "platform_rules": platform_rules,
+        # 4./5. Partner profile (shared loader, single source of truth)
+        "partner_profile": load_partner_profile(partner_id, cx),
+        # 9. Reconciliation predictions from the raw earnings/settlements
+        "reconciliation_predictions": _build_reconciliation_predictions(partner_id, cx),
+    }
+
+
+def load_partner_history_from_db(partner_id: str, conn: Optional[Connection] = None) -> dict[str, Any]:
+    """
+    Load a partner's 30-day transaction history from Supabase views/tables
+    and build the inputs needed for run_audit().
+    """
+    # Every read shares one connection, so the transactions, contracts, rules
+    # and predictions all come from one consistent view of the database. The
+    # building below is pure, so it happens after the connection goes back.
+    with db.session(conn) as cx:
+        loaded = _read_history_rows(partner_id, cx)
+
+    tx_rows = loaded["tx_rows"]
+    platforms = loaded["platforms"]
+    contracts = loaded["contracts"]
+    platform_rules = loaded["platform_rules"]
+    partner_profile = loaded["partner_profile"]
+    reconciliation_predictions = loaded["reconciliation_predictions"]
 
     # 6. Build ContractVersion objects (helpers are module-level, shared)
     contract_versions = []
@@ -462,10 +473,6 @@ def load_partner_history_from_db(partner_id: str) -> dict[str, Any]:
     platform_counts = Counter(tx["platform"] for tx in tx_rows)
     primary_platform = platform_counts.most_common(1)[0][0]
 
-    # 9. Build reconciliation predictions from raw earnings/settlements
-    # Query raw earnings and settlements separately to preserve anomaly detection
-    reconciliation_predictions = _build_reconciliation_predictions(partner_id, conn)
-
     return {
         "partner_id": partner_id,
         "partner_profile": partner_profile,
@@ -478,10 +485,12 @@ def load_partner_history_from_db(partner_id: str) -> dict[str, Any]:
     }
 
 
-def _build_reconciliation_predictions(partner_id: str, conn) -> list[dict[str, Any]]:
+def _build_reconciliation_predictions(partner_id: str, conn: Connection) -> list[dict[str, Any]]:
     """
     Build reconciliation predictions by querying earnings, settlements, incentives, deductions
     separately and feeding them to the existing normalize_real_records() function.
+
+    The connection is passed in, so these reads join the caller's transaction.
     """
     from collections import defaultdict
 

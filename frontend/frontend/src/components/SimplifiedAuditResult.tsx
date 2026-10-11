@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { formatCurrency, auditNumber } from '../services/demoData';
+import { platformDisplayName } from '../services/platforms';
 import type { EvidenceLimit, SettlementReconciliation, SpotCheck } from '../services/api';
 import { ContractQuestions, CouldNotCheck, HoursWorkedView, SettlementReconciliationView, SpotCheckView } from './EvidenceModeResult';
 
@@ -127,7 +128,10 @@ const SimplifiedAuditResult: React.FC<SimplifiedAuditResultProps> = ({
     ...(metadataPlatforms && metadataPlatforms.length > 0 ? metadataPlatforms : availablePlatforms),
   ];
   const activePlatform = platformOptions.includes(selectedPlatform) ? selectedPlatform : 'All';
-  const formatPlatformLabel = (platform: string) => platform.replace(/([a-z])([A-Z])/g, '$1 $2');
+  // Display names come from services/platforms.ts, not from a regex that
+  // happened to turn "UberEats" into "Uber Eats". "All" and any platform the
+  // app does not know are shown unchanged.
+  const formatPlatformLabel = platformDisplayName;
   const showPlatformColumn = activePlatform === 'All' && platformOptions.length > 2;
 
   // Filter predictions by selected platform

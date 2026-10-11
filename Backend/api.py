@@ -30,8 +30,11 @@ from orchestrator import run_audit
 from database import supabase_db
 from audit_context import serialize_audit_state, debate_state_from_audit_context
 from real_data import load_partner_history_from_db
+import db
 import json
 import asyncio
+import os
+from contextlib import asynccontextmanager
 from decimal import Decimal
 from typing import List, Set, Dict, Any, Optional
 
@@ -58,90 +61,78 @@ class CounterfactualResult(BaseModel):
     calculation: Optional[str] = Field(default=None, description="How the rupee change was computed")
 
 
-async def run_delivery_streams():
-    """Background delivery platform simulators for the live earnings stream."""
-    await asyncio.sleep(2)
-    await asyncio.gather(
-        Zomato(),
-        Swiggy(),
-        UberEats(),
-    )
-
-
 import websockets
 
+from platforms import STREAM_PROFILES, Platform, StreamProfile
 
-async def Zomato():
-        Zomato_earnings = 4000
-        while True:
-            try:
-                async with websockets.connect("ws://127.0.0.1:8000/stream") as ws:
-                    payload = {"platform": "Zomato", "earnings": Zomato_earnings}
-                    await ws.send(json.dumps(payload))
-                    response_Zomato = await ws.recv() #This line is important because it tells the client to receive the data in JSON format from the server
-                    print(f"Zomato received: {response_Zomato}")
-                    Zomato_earnings += 100
-                    await asyncio.sleep(5)
-            except Exception as e:
-                print(f"Zomato connection failed, retrying in 5s... Error: {e}")
-                await asyncio.sleep(5)
+# The simulated stream talks to this server's own WebSocket endpoint. It is a
+# loopback address because the simulator runs inside the server process.
+STREAM_URL = os.getenv("STREAM_URL", "ws://127.0.0.1:8000/stream")
+# How long to wait before the first tick, so the endpoint is accepting.
+STREAM_STARTUP_DELAY_SECONDS = 2
+STREAM_RETRY_SECONDS = 5
 
-async def Swiggy():
-    async with websockets.connect("ws://127.0.0.1:8000/stream") as ws:
-        Swiggy_earnings = 3500
-        while True:
-            try:
-                payload = {"platform": "Swiggy", "earnings": Swiggy_earnings}
-                await ws.send(json.dumps(payload))
-                response_Swiggy = await ws.recv() #This line is important because it tells the client to receive the data in JSON format from the server
-                print(f"Swiggy received: {response_Swiggy}")
-                Swiggy_earnings += 100
-                await asyncio.sleep(13)
-            except Exception as e:
-                print(f"Swiggy connection failed, retrying in 5s... Error: {e}")
-                await asyncio.sleep(5)
 
-async def UberEats():
-    async with websockets.connect("ws://127.0.0.1:8000/stream") as ws:
-        Uber_earnings = 1700
-        while True:
-            try:
-                payload = {"platform": "UberEats", "earnings": Uber_earnings}
-                await ws.send(json.dumps(payload))
-                response_Uber = await ws.recv() #This line is important because it tells the server to receive the data in JSON format from the client
-                print(f"Uber received: {response_Uber}")
-                Uber_earnings += 100
-                await asyncio.sleep(18)
-            except Exception as e:
-                print(f"UberEats connection failed, retrying in 5s... Error: {e}")
-                await asyncio.sleep(5)
+async def run_platform_stream(profile: StreamProfile) -> None:
+    """Send one simulated platform's rising earnings to the stream, forever.
 
-async def main():
-            #region asyncio.gather explanation
-            """This 'asyncio.gather' is real important because this function is the reason why all the three async functions are sent to the event loop at the same time, and
-            the why they are running in parallel, if we didn't use this function these three async functions would have been executed one after the other, which is not what we want.
-            When we put 'await' in front of 'asyncio.gather' this happens:
-            1. Send three async functions to the event loop at the same time.
-            2. Wait for all three async functions to complete and stops reading the code below this line until all three async functions are completed.
-            3. Once all three async functions are completed, it continues reading the code below this line."""
-            #endregion
-            await asyncio.sleep(2)
-            await asyncio.gather(
-                Zomato(),
-                Swiggy(),
-                UberEats()
+    One function for every platform: the three near-identical copies this
+    replaced had drifted apart, and two of them opened the socket outside their
+    own ``try``, so a single dropped connection left them retrying a socket that
+    was already dead.
+    """
+    earnings = profile.starting_earnings
+    while True:
+        try:
+            # Reconnecting inside the loop is what makes a dropped connection
+            # recoverable rather than fatal.
+            async with websockets.connect(STREAM_URL) as ws:
+                while True:
+                    await ws.send(json.dumps({
+                        "platform": profile.platform.value,
+                        "earnings": earnings,
+                    }))
+                    # The server replies per message; read it so the socket's
+                    # receive buffer cannot fill up and stall the send.
+                    await ws.recv()
+                    earnings += profile.increment
+                    await asyncio.sleep(profile.tick_seconds)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            print(
+                f"{profile.platform.display_name} stream failed, retrying in "
+                f"{STREAM_RETRY_SECONDS}s: {exc}"
             )
+            await asyncio.sleep(STREAM_RETRY_SECONDS)
 
-#region Important note about asyncio.run(main())
-"""This line is important because it tells the client to run the main function, which is the entry point of the program, and it is also important because it tells
- the client to run the main function in an event loop, which is a loop that runs forever and keeps the program running until it is stopped by the user. This is like the
- master ignition switch of the program, it provisions the event loop in the operating system and runs until the program is stopped by the user."""
-#endregion
 
+async def run_delivery_streams() -> None:
+    """Background delivery platform simulators for the live earnings stream."""
+    await asyncio.sleep(STREAM_STARTUP_DELAY_SECONDS)
+    await asyncio.gather(*(run_platform_stream(p) for p in STREAM_PROFILES))
+
+
+@asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Special function called by FastAPI on startup/shutdown to start/stop background tasks."""
-    task = asyncio.create_task(run_delivery_streams())
-    yield
+    """Start and stop everything the server owns for the length of its run.
+
+    Opening the pool here means an unreachable database fails startup instead of
+    failing the first request. The simulator task is cancelled and awaited on the
+    way out; before, it was created and never stopped, so its exceptions were
+    never retrieved and shutdown left it running.
+    """
+    db.open_pool()
+    stream_task = asyncio.create_task(run_delivery_streams())
+    try:
+        yield
+    finally:
+        stream_task.cancel()
+        try:
+            await stream_task
+        except asyncio.CancelledError:
+            pass
+        db.close_pool()
 
 
 server = FastAPI(lifespan=lifespan)
@@ -181,7 +172,10 @@ manager = ConnectionManager()
 
 
 class StreamData(BaseModel):
-    platform: str
+    # Typed as the enum, so a platform name this server does not know is
+    # rejected at the boundary instead of quietly becoming a new key on the
+    # dashboard - which is exactly how the Uber Eats card went stale.
+    platform: Platform
     earnings: int
 
 # Documents are submitted only through the Telegram bot (telegram_bot.py ->
@@ -201,30 +195,56 @@ async def ingest_stream(websocket: WebSocket):
             try:
                 data = await websocket.receive_json()
                 secure_data = StreamData(**data)
-                print(f"STREAM RECEIVE: Logged {secure_data.earnings} from {secure_data.platform}")
+                # .value throughout: formatting the enum itself would write
+                # "Platform.ZOMATO" where the stored and broadcast name must be
+                # the wire name the database and the dashboard agree on.
+                platform = secure_data.platform.value
+                print(f"STREAM RECEIVE: Logged {secure_data.earnings} from {platform}")
 
-                # Store to database
+                # Store to database. A failed write ends this message: the
+                # sender is told it failed and nothing is broadcast, because a
+                # figure shown on the dashboard that was never stored is a
+                # figure no audit can later reconcile. There is no HTTP status
+                # to return on a WebSocket, so the error is a frame of its own.
                 try:
                     supabase_db.table("earnings").insert({
-                        "platform": secure_data.platform,
+                        "platform": platform,
                         "amount": secure_data.earnings
                     }).execute()
-                except Exception as e:
-                    print(f"Database error: {e}")
+                except Exception as exc:
+                    print(f"STREAM REJECT: storing {secure_data.earnings} from {platform} failed: {exc}")
+                    await websocket.send_text(json.dumps({
+                        "status": "error",
+                        "error": "storage_failed",
+                        "platform": platform,
+                        "detail": f"Earnings from {platform} could not be stored: {exc}",
+                    }))
+                    continue
 
                 # Broadcast to all connected frontend clients (Bobby's dashboard)
                 broadcast_message = json.dumps({
-                    "platform": secure_data.platform,
+                    "platform": platform,
                     "earnings": secure_data.earnings
                 })
                 await manager.broadcast(broadcast_message)
 
-                # Send confirmation back to the sender
-                await websocket.send_text(f"Logged earnings of {secure_data.earnings} from {secure_data.platform}")
+                # Send confirmation back to the sender - only now that the
+                # earnings are actually stored.
+                # No "earnings" key: a sender-only acknowledgement must not
+                # be shaped like the broadcast frames, or a client that both
+                # sends and listens would read its own ack as a live update.
+                await websocket.send_text(json.dumps({
+                    "status": "stored",
+                    "platform": platform,
+                }))
             except WebSocketDisconnect:
                 break
-            except ValidationError as e:
-                await websocket.send_text("Invalid Data Format received")
+            except ValidationError as exc:
+                await websocket.send_text(json.dumps({
+                    "status": "error",
+                    "error": "invalid_payload",
+                    "detail": f"Invalid data format received: {exc.error_count()} problem(s).",
+                }))
                 continue
     finally:
         manager.disconnect(websocket)
@@ -271,10 +291,16 @@ def _scenario_figures(audit_context: Dict[str, Any], platform: str) -> Dict[str,
         return {"figures": {}, "days": None}
     merged = None
     if audit_context.get("source") == "telegram" and audit_context.get("submission_id"):
+        # A lookup that fails is not the same as a submission that is absent:
+        # the first is a server fault and must be reported, the second simply
+        # leaves the scenario without figures.
         try:
             merged = telegram_store.get_submission_result(partner_id, audit_context["submission_id"])
-        except Exception:
-            merged = None
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Could not load the Telegram audit for this scenario: {exc}",
+            ) from exc
         if merged is None:
             return {"figures": {}, "days": None}
     result = load_scenario_figures(partner_id, platform, audit_context.get("submission_id"), merged)
