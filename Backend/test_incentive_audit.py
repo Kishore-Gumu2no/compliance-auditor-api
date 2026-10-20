@@ -463,7 +463,15 @@ def test_25_api_uses_five_days_for_history_and_one_for_telegram(monkeypatch):
 
     ev = _week_evidence(WEEK_COUNTS)
     kb = _fit_store()
-    monkeypatch.setattr(api, "_incentive_evidence_for", lambda req: ev)
+
+    # Async because the real `_incentive_evidence_for` is: its database reads
+    # go through `asyncio.to_thread` so they cannot block the event loop (and
+    # with it the live earnings stream) for the length of a query. A sync stub
+    # would be awaited and fail.
+    async def _evidence(req):
+        return ev
+
+    monkeypatch.setattr(api, "_incentive_evidence_for", _evidence)
     monkeypatch.setattr(api, "default_store", lambda: kb)
     history = asyncio.run(api.audit_incentive(api.IncentiveAuditRequest(partner_id="synthetic-rider")))
     telegram = asyncio.run(api.audit_incentive(api.IncentiveAuditRequest(

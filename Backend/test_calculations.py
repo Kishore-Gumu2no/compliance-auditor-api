@@ -1,7 +1,9 @@
 """Unit tests for the FairPay Engine core calculation functions."""
 
 import sys
-sys.path.insert(0, 'D:/FairPay-Engine/Backend')
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from models import ContractVersion, TransactionRecord, Deduction
 from calculations import calculate_contractual_net, calculate_payments

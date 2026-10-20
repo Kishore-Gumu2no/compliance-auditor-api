@@ -53,36 +53,89 @@ def _conninfo() -> str:
     )
 
 
+def describe_target() -> str:
+    """``host:port/dbname``, for an error message.
+
+    Built from the environment rather than from :func:`_conninfo`, whose string
+    carries the password; this is written to logs and returned to callers.
+    """
+    return (
+        f"{os.getenv('DB_HOST', 'localhost')}:{os.getenv('DB_PORT', '54322')}"
+        f"/{os.getenv('DB_NAME', 'postgres')}"
+    )
+
+
+class DatabaseUnavailable(RuntimeError):
+    """Postgres could not be reached. Raised by :func:`open_pool` on verify."""
+
+
 _pool: Optional[ConnectionPool] = None
 _lock = threading.Lock()
 
 
-def open_pool() -> ConnectionPool:
+def open_pool(*, verify: bool = False, verify_timeout: Optional[float] = None) -> ConnectionPool:
     """Create and open the pool, or return the one already open.
 
-    Called from the FastAPI lifespan so the server fails at startup, not on the
-    first request, when the database is unreachable. Scripts, the Telegram bot
-    and the tests never call this: :func:`pool` opens one on first use.
+    Scripts, the Telegram bot and the tests never call this: :func:`pool` opens
+    one on first use.
+
+    ``verify=True`` makes this actually reach the database before returning,
+    and raise :class:`DatabaseUnavailable` when it cannot. **Opening a pool
+    proves nothing on its own.** ``ConnectionPool.open()`` defaults to
+    ``wait=False``: it starts background worker threads and returns
+    immediately, successfully, even when there is no server at the address. The
+    old call site here relied on it as a startup check and therefore had no
+    startup check at all - the server came up looking healthy with no database,
+    and every later request paid a full ``timeout`` of waiting before failing
+    with a 500. ``pool.wait()`` is the call that blocks until ``min_size``
+    connections are really established, and raises if they cannot be.
+
+    The server passes ``verify=True`` from its lifespan so that a missing
+    database is one loud failure at startup instead of a silent one per request.
     """
     global _pool
     with _lock:
         if _pool is not None:
-            return _pool
-        pool = ConnectionPool(
-            _conninfo(),
-            min_size=int(os.getenv("DB_POOL_MIN", "1")),
-            max_size=int(os.getenv("DB_POOL_MAX", "10")),
-            # Hand out only connections that are still alive, so a database
-            # restart costs one retry instead of breaking every later request.
-            check=ConnectionPool.check_connection,
-            name="fairpay",
-            # Opened explicitly below: passing open=True to the constructor is
-            # deprecated in psycopg_pool 3.2+.
-            open=False,
+            pool_ = _pool
+        else:
+            pool_ = ConnectionPool(
+                _conninfo(),
+                min_size=int(os.getenv("DB_POOL_MIN", "1")),
+                max_size=int(os.getenv("DB_POOL_MAX", "10")),
+                # How long a caller waits for a free connection before giving
+                # up. psycopg_pool's own default is 30s, which is far longer
+                # than any partner will hold a page open: the request is dead
+                # either way, so fail in 10 and let the UI say so.
+                timeout=float(os.getenv("DB_POOL_TIMEOUT", "10")),
+                # Hand out only connections that are still alive, so a database
+                # restart costs one retry instead of breaking every later request.
+                check=ConnectionPool.check_connection,
+                name="fairpay",
+                # Opened explicitly below: passing open=True to the constructor is
+                # deprecated in psycopg_pool 3.2+.
+                open=False,
+            )
+            pool_.open()
+            _pool = pool_
+
+    if verify:
+        # Outside the lock on purpose: this blocks for as long as the database
+        # takes to answer, and holding `_lock` across it would stall every
+        # other thread trying to borrow a connection.
+        timeout = (
+            verify_timeout
+            if verify_timeout is not None
+            else float(os.getenv("DB_STARTUP_TIMEOUT", "10"))
         )
-        pool.open()
-        _pool = pool
-        return _pool
+        try:
+            pool_.wait(timeout=timeout)
+        except Exception as exc:
+            raise DatabaseUnavailable(
+                f"Could not reach Postgres at {describe_target()} within {timeout:g}s: {exc}. "
+                "Start it with `docker compose up -d db`, or set DB_HOST/DB_PORT to "
+                "point at your own Postgres."
+            ) from exc
+    return pool_
 
 
 def close_pool() -> None:

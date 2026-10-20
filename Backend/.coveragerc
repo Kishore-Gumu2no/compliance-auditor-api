@@ -1,0 +1,14 @@
+# Coverage settings for the FairPay Engine test suite.
+#
+# The test modules themselves are excluded: a test file always runs to
+# completion, so counting its lines inflates the figure without saying
+# anything about how much of the engine is exercised.
+[run]
+source = .
+omit =
+    test_*.py
+    validate_incentive_audit.py
+    Experimental_files/*
+
+[report]
+show_missing = False

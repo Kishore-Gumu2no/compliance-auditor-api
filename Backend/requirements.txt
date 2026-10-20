@@ -1,20 +1,27 @@
-fastapi[standard]
-uvicorn
-pydantic
-supabase
-groq
-instructor
-langgraph
-qdrant-client
-fastembed
-pdfplumber
-pytesseract
-pillow
-presidio-analyzer
-presidio-anonymizer
-python-dotenv
-websockets
-httpx
-psycopg[binary,pool]
-pytest
-pytest-asyncio
+# Direct dependencies of the FairPay Engine backend, pinned to the versions
+# the project is actually developed and measured against.
+#
+# The backend IMAGE installs from requirements.lock, not from this file: that
+# holds the full transitive set, so pip has no resolving to do. Change this
+# file, then regenerate the lock (instructions at the top of it).
+
+fastapi[standard]==0.141.1
+uvicorn==0.50.0
+pydantic==2.13.4
+groq==1.5.0
+instructor==1.15.4
+langgraph==1.2.7
+qdrant-client==1.18.0
+fastembed==0.8.0
+pdfplumber==0.11.10
+pytesseract==0.3.13
+pillow==12.3.0
+presidio-analyzer==2.2.363
+presidio-anonymizer==2.2.363
+python-dotenv==1.2.2
+httpx==0.28.1
+websockets==15.0.1
+psycopg[binary,pool]==3.3.6
+pytest==9.1.1
+pytest-asyncio==1.4.0
+pytest-cov==7.1.0

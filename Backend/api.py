@@ -27,16 +27,17 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ValidationError, Field
 from orchestrator import run_audit
-from database import supabase_db
 from audit_context import serialize_audit_state, debate_state_from_audit_context
 from real_data import load_partner_history_from_db
+from api_errors import operation, register_exception_handlers
 import db
 import json
 import asyncio
+import logging
 import os
 from contextlib import asynccontextmanager
 from decimal import Decimal
-from typing import List, Set, Dict, Any, Optional
+from typing import List, Dict, Any, Optional
 
 from debate import run_debate, summarize_scenario
 
@@ -61,55 +62,45 @@ class CounterfactualResult(BaseModel):
     calculation: Optional[str] = Field(default=None, description="How the rupee change was computed")
 
 
-import websockets
-
 from platforms import STREAM_PROFILES, Platform, StreamProfile
-
-# The simulated stream talks to this server's own WebSocket endpoint. It is a
-# loopback address because the simulator runs inside the server process.
-STREAM_URL = os.getenv("STREAM_URL", "ws://127.0.0.1:8000/stream")
-# How long to wait before the first tick, so the endpoint is accepting.
-STREAM_STARTUP_DELAY_SECONDS = 2
-STREAM_RETRY_SECONDS = 5
 
 
 async def run_platform_stream(profile: StreamProfile) -> None:
-    """Send one simulated platform's rising earnings to the stream, forever.
+    """Publish one simulated platform's rising earnings, forever.
 
-    One function for every platform: the three near-identical copies this
-    replaced had drifted apart, and two of them opened the socket outside their
-    own ``try``, so a single dropped connection left them retrying a socket that
-    was already dead.
+    The simulator calls :meth:`ConnectionManager.publish` directly, because it
+    runs inside this very process. It used to open a WebSocket client back to
+    this server's own ``/stream`` endpoint over loopback TCP, and that was the
+    cause of the repeating "keepalive ping timeout" drops:
+
+    * ``manager.broadcast`` sent every tick to *every* connection, so each
+      simulator was also sent its own ticks and the other two platforms' ticks.
+    * Each simulator read exactly one frame per tick it sent, so the unread
+      frames accumulated - and the WebSocket keepalive **pong** queued up
+      behind them.
+    * The library saw no pong inside its timeout and killed the connection with
+      code 1011. All three reconnected, refilled their queues, and were killed
+      again, so the dashboard froze for ~5 seconds on a cycle, permanently.
+
+    Publishing in-process removes the whole class of failure: there is no
+    socket to drop, no keepalive to miss, no reconnect loop and no queue to
+    overflow. ``/stream/ingest`` still exists for a *real* external platform
+    feed, which is the only case that needs a network hop.
     """
     earnings = profile.starting_earnings
     while True:
-        try:
-            # Reconnecting inside the loop is what makes a dropped connection
-            # recoverable rather than fatal.
-            async with websockets.connect(STREAM_URL) as ws:
-                while True:
-                    await ws.send(json.dumps({
-                        "platform": profile.platform.value,
-                        "earnings": earnings,
-                    }))
-                    # The server replies per message; read it so the socket's
-                    # receive buffer cannot fill up and stall the send.
-                    await ws.recv()
-                    earnings += profile.increment
-                    await asyncio.sleep(profile.tick_seconds)
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            print(
-                f"{profile.platform.display_name} stream failed, retrying in "
-                f"{STREAM_RETRY_SECONDS}s: {exc}"
-            )
-            await asyncio.sleep(STREAM_RETRY_SECONDS)
+        await manager.publish(profile.platform, earnings)
+        earnings += profile.increment
+        await asyncio.sleep(profile.tick_seconds)
 
 
 async def run_delivery_streams() -> None:
-    """Background delivery platform simulators for the live earnings stream."""
-    await asyncio.sleep(STREAM_STARTUP_DELAY_SECONDS)
+    """Background delivery platform simulators for the live earnings stream.
+
+    Each platform ticks on its own schedule, so they run as independent tasks.
+    ``asyncio.gather`` propagates the first exception, which the lifespan logs;
+    a bug in one simulator must not pass silently.
+    """
     await asyncio.gather(*(run_platform_stream(p) for p in STREAM_PROFILES))
 
 
@@ -117,13 +108,40 @@ async def run_delivery_streams() -> None:
 async def lifespan(app: FastAPI):
     """Start and stop everything the server owns for the length of its run.
 
-    Opening the pool here means an unreachable database fails startup instead of
-    failing the first request. The simulator task is cancelled and awaited on the
-    way out; before, it was created and never stopped, so its exceptions were
-    never retrieved and shutdown left it running.
+    ``verify=True`` is what makes an unreachable database fail *startup* rather
+    than every later request. Without it the pool opens successfully against an
+    address with no server behind it (see :func:`db.open_pool`), the server
+    reports itself healthy, and the fault only appears as a timeout on each
+    request - which is exactly how a missing database stayed invisible.
+
+    Startup is deliberately aborted rather than degraded: every feature on the
+    dashboard reads from Postgres, so a server without it can serve nothing but
+    error pages, and an orchestrator restarting a container that exits is more
+    useful than one that keeps a useless container alive.
+
+    The simulator task is cancelled and awaited on the way out; before, it was
+    created and never stopped, so its exceptions were never retrieved and
+    shutdown left it running.
     """
-    db.open_pool()
-    stream_task = asyncio.create_task(run_delivery_streams())
+    try:
+        db.open_pool(verify=True)
+    except db.DatabaseUnavailable as exc:
+        logger.critical("Refusing to start: %s", exc)
+        raise
+    logger.info("Database ready at %s", db.describe_target())
+
+    stream_task = asyncio.create_task(run_delivery_streams(), name="delivery-streams")
+
+    # Without this, a simulator that raised would die quietly and the
+    # dashboard would just stop updating with nothing in the log to say why.
+    def _log_stream_failure(task: asyncio.Task) -> None:
+        if task.cancelled():
+            return
+        if (exc := task.exception()) is not None:
+            logger.error("Earnings simulators stopped", exc_info=exc)
+
+    stream_task.add_done_callback(_log_stream_failure)
+
     try:
         yield
     finally:
@@ -133,9 +151,23 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
         db.close_pool()
+        logger.info("Shutdown complete")
 
+
+# Logging is configured once, here, so every module's ``logger`` call has a
+# destination. `print` wrote to stdout with no level, no timestamp and no way
+# to turn it down; uvicorn's own logs are already on `logging`, so this puts
+# the application's output in the same stream and format as the server's.
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
+)
+logger = logging.getLogger("fairpay.api")
 
 server = FastAPI(lifespan=lifespan)
+# Database failures that reached the app without an `operation(...)` wrapper
+# still answer 503 rather than a misleading 500.
+register_exception_handlers(server)
 server.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://localhost:5174"],
@@ -145,26 +177,91 @@ server.add_middleware(
 """ #This line is important because it tells the FastAPI framework to use the lifespan function when the server starts and stops, and it is used to perform any setup or teardown tasks that
 need to be done when the server starts or stops, so that we can start the async functions when the server starts and stop them when the server stops."""
 
-# Connection manager for broadcasting to all connected frontend clients
 class ConnectionManager:
-    def __init__(self):
-        self.active_connections: Set[WebSocket] = set()
+    """The dashboards currently watching the live earnings stream.
 
-    async def connect(self, websocket: WebSocket):
+    It holds **subscribers only** - connections that listen and never send.
+    That distinction is the fix for the stream's repeating self-inflicted
+    disconnects: the old manager held one undifferentiated set of "active
+    connections" and sent every tick to all of them, so the three simulators,
+    which were themselves connected as senders, were each sent the other two's
+    ticks plus their own. They read one frame per tick, the rest piled up, the
+    keepalive pong queued behind the backlog, and the library closed the
+    connection as unresponsive (code 1011) every few seconds.
+
+    A producer is now never a subscriber. ``/stream/ingest`` accepts a sender
+    and :meth:`publish` fans out only to the dashboards in :attr:`_subscribers`,
+    so a producer is never sent its own data and can never be starved by it.
+    """
+
+    def __init__(self) -> None:
+        # Maps each watching socket to the partner it says it is watching.
+        self._subscribers: Dict[WebSocket, Optional[str]] = {}
+        # `publish` iterates and awaits; a lock keeps a connect or disconnect
+        # arriving mid-fanout from mutating the mapping underneath it. The
+        # event loop is single-threaded but `await` is a yield point, so
+        # "single-threaded" does not mean "uninterrupted".
+        self._lock = asyncio.Lock()
+
+    async def subscribe(self, websocket: WebSocket, partner_id: Optional[str] = None) -> None:
+        """Accept a dashboard connection and start sending it ticks."""
         await websocket.accept()
-        self.active_connections.add(websocket)
+        async with self._lock:
+            self._subscribers[websocket] = partner_id
+        logger.info(
+            "Dashboard subscribed (partner=%s, watching=%d)",
+            partner_id or "unspecified",
+            len(self._subscribers),
+        )
 
-    def disconnect(self, websocket: WebSocket):
-        self.active_connections.discard(websocket)
+    async def unsubscribe(self, websocket: WebSocket) -> None:
+        async with self._lock:
+            partner_id = self._subscribers.pop(websocket, None)
+        logger.info(
+            "Dashboard unsubscribed (partner=%s, watching=%d)",
+            partner_id or "unspecified",
+            len(self._subscribers),
+        )
 
-    async def broadcast(self, message: str):
-        """Broadcast message to all connected clients"""
-        for connection in self.active_connections.copy():
+    @property
+    def subscriber_count(self) -> int:
+        return len(self._subscribers)
+
+    async def publish(self, platform: Platform, earnings: int) -> int:
+        """Send one platform's running total to every watching dashboard.
+
+        Returns the number of dashboards it reached, so a caller can log that
+        a tick went nowhere rather than assuming it was delivered.
+
+        ``platform.value`` throughout: formatting the enum itself would send
+        ``"Platform.ZOMATO"`` where the dashboard keys its cards by the wire
+        name (``"UberEats"``). That mismatch is what once froze the Uber Eats
+        card, and ``Backend/platforms.py`` is the single source of both names.
+        """
+        message = json.dumps({"platform": platform.value, "earnings": earnings})
+        logger.debug("Tick: %s -> %s", platform.value, earnings)
+
+        async with self._lock:
+            targets = list(self._subscribers)
+
+        dead: list[WebSocket] = []
+        delivered = 0
+        for connection in targets:
             try:
                 await connection.send_text(message)
+                delivered += 1
             except Exception:
-                # Connection might be closed, remove it
-                self.active_connections.discard(connection)
+                # A dashboard that closed between the snapshot above and this
+                # send. Collected and removed after the loop so the iteration
+                # is never mutated while it runs.
+                dead.append(connection)
+
+        if dead:
+            async with self._lock:
+                for connection in dead:
+                    self._subscribers.pop(connection, None)
+            logger.debug("Dropped %d closed dashboard connection(s)", len(dead))
+        return delivered
 
 
 # Global connection manager for the earnings stream
@@ -182,72 +279,92 @@ class StreamData(BaseModel):
 # telegram_audit.run_submission_audit). There is no document upload endpoint.
 
 @server.websocket("/stream")
+async def subscribe_stream(websocket: WebSocket, partner_id: Optional[str] = None):
+    """The dashboard's live earnings feed. Server-to-client only.
+
+    Reading and writing are separate endpoints because they are separate roles,
+    and conflating them is what made the stream disconnect itself every few
+    seconds (see :class:`ConnectionManager`). A dashboard subscribes here; a
+    platform feed sends to ``/stream/ingest``.
+
+    ``partner_id`` is recorded for the connection rather than ignored, as it
+    was before. The ticks themselves stay global: they are a demonstration of
+    the live dashboard driven by ``STREAM_PROFILES``, not one partner's
+    earnings, so there is nothing per-partner to filter on yet. When a real
+    per-partner feed arrives, this is the value to filter by - and until then
+    the log says which partner each dashboard claimed to be.
+
+    These ticks are cosmetic and are never written to the ``earnings`` table:
+    that table is the audit-grade schema (order_id, contract_version, the
+    base/distance/wait/incentive/bonus breakdown, ...) and a tick has none of
+    that. Demo mode in the frontend mirrors this by never persisting either.
+    """
+    await manager.subscribe(websocket, partner_id)
+    try:
+        while True:
+            # A subscriber sends nothing. This await exists only to notice the
+            # close: without reading, a disconnect is detected no earlier than
+            # the next failed send, and the connection leaks until then.
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        await manager.unsubscribe(websocket)
+
+
+@server.websocket("/stream/ingest")
 async def ingest_stream(websocket: WebSocket):
+    """Where a platform earnings feed sends its ticks. Client-to-server only.
+
+    The in-process simulators do not use this - they call
+    :meth:`ConnectionManager.publish` directly, since a loopback TCP connection
+    between two objects in the same process buys nothing and cost this project
+    a permanent reconnect loop. This endpoint is for a genuinely external feed,
+    which is the only case that needs the network hop.
+
+    A sender is never added to the subscriber set, so it is never sent the data
+    it just published, nor any other platform's.
     """
-    WebSocket endpoint that:
-    1. Accepts earnings data from platform simulators (Zomato, Swiggy, Uber Eats)
-    2. Stores to database
-    3. Broadcasts to all connected frontend clients (Bobby's dashboard)
-    """
-    await manager.connect(websocket)
+    await websocket.accept()
+    logger.info("Platform feed connected to /stream/ingest")
     try:
         while True:
             try:
-                data = await websocket.receive_json()
-                secure_data = StreamData(**data)
-                # .value throughout: formatting the enum itself would write
-                # "Platform.ZOMATO" where the stored and broadcast name must be
-                # the wire name the database and the dashboard agree on.
-                platform = secure_data.platform.value
-                print(f"STREAM RECEIVE: Logged {secure_data.earnings} from {platform}")
-
-                # Store to database. A failed write ends this message: the
-                # sender is told it failed and nothing is broadcast, because a
-                # figure shown on the dashboard that was never stored is a
-                # figure no audit can later reconcile. There is no HTTP status
-                # to return on a WebSocket, so the error is a frame of its own.
-                try:
-                    supabase_db.table("earnings").insert({
-                        "platform": platform,
-                        "amount": secure_data.earnings
-                    }).execute()
-                except Exception as exc:
-                    print(f"STREAM REJECT: storing {secure_data.earnings} from {platform} failed: {exc}")
-                    await websocket.send_text(json.dumps({
-                        "status": "error",
-                        "error": "storage_failed",
-                        "platform": platform,
-                        "detail": f"Earnings from {platform} could not be stored: {exc}",
-                    }))
-                    continue
-
-                # Broadcast to all connected frontend clients (Bobby's dashboard)
-                broadcast_message = json.dumps({
-                    "platform": platform,
-                    "earnings": secure_data.earnings
-                })
-                await manager.broadcast(broadcast_message)
-
-                # Send confirmation back to the sender - only now that the
-                # earnings are actually stored.
-                # No "earnings" key: a sender-only acknowledgement must not
-                # be shaped like the broadcast frames, or a client that both
-                # sends and listens would read its own ack as a live update.
-                await websocket.send_text(json.dumps({
-                    "status": "stored",
-                    "platform": platform,
-                }))
+                tick = StreamData(**await websocket.receive_json())
             except WebSocketDisconnect:
                 break
-            except ValidationError as exc:
+            except (ValidationError, ValueError, TypeError) as exc:
+                # Rejected at the boundary: an unrecognised platform name must
+                # not become a new key on the dashboard. The sender is told
+                # which message was refused and the connection stays open.
+                detail = (
+                    f"{exc.error_count()} problem(s)"
+                    if isinstance(exc, ValidationError)
+                    else str(exc)
+                )
+                logger.warning("Rejected a malformed tick: %s", detail)
                 await websocket.send_text(json.dumps({
                     "status": "error",
                     "error": "invalid_payload",
-                    "detail": f"Invalid data format received: {exc.error_count()} problem(s).",
+                    "detail": f"Invalid data format received: {detail}.",
                 }))
                 continue
+
+            delivered = await manager.publish(tick.platform, tick.earnings)
+
+            # No "earnings" key: a sender-only acknowledgement must not be
+            # shaped like a tick frame, or a client that both sends and listens
+            # would read its own ack as a live update. `delivered` lets the
+            # sender see that a tick reached nobody.
+            await websocket.send_text(json.dumps({
+                "status": "published",
+                "platform": tick.platform.value,
+                "delivered_to": delivered,
+            }))
+    except WebSocketDisconnect:
+        pass
     finally:
-        manager.disconnect(websocket)
+        logger.info("Platform feed disconnected from /stream/ingest")
 
 # ---------- Counter‑factual endpoints ----------
 
@@ -257,7 +374,7 @@ async def simulate_counterfactual(scenario: CounterfactualScenario) -> Counterfa
     if scenario.audit_context is None:
         raise HTTPException(status_code=422, detail="audit_context is required. Provide the counterfactual_context from a completed audit.")
 
-    figures = _scenario_figures(scenario.audit_context, scenario.platform)
+    figures = await _scenario_figures(scenario.audit_context, scenario.platform)
     figures_text = describe_figures(figures["figures"])
     initial_state = debate_state_from_audit_context(
         audit_context=scenario.audit_context,
@@ -284,7 +401,7 @@ async def simulate_counterfactual(scenario: CounterfactualScenario) -> Counterfa
     )
 
 
-def _scenario_figures(audit_context: Dict[str, Any], platform: str) -> Dict[str, Any]:
+async def _scenario_figures(audit_context: Dict[str, Any], platform: str) -> Dict[str, Any]:
     """The partner's real numbers for a typed scenario; empty when unavailable."""
     partner_id = audit_context.get("partner_id")
     if not partner_id:
@@ -294,16 +411,16 @@ def _scenario_figures(audit_context: Dict[str, Any], platform: str) -> Dict[str,
         # A lookup that fails is not the same as a submission that is absent:
         # the first is a server fault and must be reported, the second simply
         # leaves the scenario without figures.
-        try:
-            merged = telegram_store.get_submission_result(partner_id, audit_context["submission_id"])
-        except Exception as exc:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Could not load the Telegram audit for this scenario: {exc}",
-            ) from exc
+        with operation("load the Telegram audit for this scenario"):
+            merged = await asyncio.to_thread(
+                telegram_store.get_submission_result, partner_id, audit_context["submission_id"]
+            )
         if merged is None:
             return {"figures": {}, "days": None}
-    result = load_scenario_figures(partner_id, platform, audit_context.get("submission_id"), merged)
+    with operation("load the scenario figures"):
+        result = await asyncio.to_thread(
+            load_scenario_figures, partner_id, platform, audit_context.get("submission_id"), merged
+        )
     days = result["figures"].get("days_worked")
     result["days"] = int(days["value"]) if days else None
     return result
@@ -402,28 +519,32 @@ class SavedSimulation(BaseModel):
     created_at: str
 
 
-def _baseline_or_error(partner_id: str, submission_id: Optional[str]) -> Dict[str, Any]:
-    """The 30-day history baseline, or one built from a Telegram audit."""
+async def _baseline_or_error(partner_id: str, submission_id: Optional[str]) -> Dict[str, Any]:
+    """The 30-day history baseline, or one built from a Telegram audit.
+
+    Async, and the database reads go through ``asyncio.to_thread``, because
+    every one of them is blocking: run directly inside an ``async def`` they
+    stop the event loop, and so stop the live earnings stream and every other
+    request, for as long as the query takes.
+    """
     import telegram_store
 
-    try:
+    with operation("load the earnings baseline", not_found=(ValueError,)):
         if submission_id:
-            merged = telegram_store.get_submission_result(partner_id, submission_id)
+            merged = await asyncio.to_thread(
+                telegram_store.get_submission_result, partner_id, submission_id
+            )
             if merged is None:
                 raise HTTPException(
                     status_code=404, detail="Telegram audit not found for this partner."
                 )
-            return load_telegram_baseline(partner_id, submission_id, merged)
-        return load_earnings_baseline(partner_id)
-    except HTTPException:
-        raise
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Failed to load earnings baseline: {exc}") from exc
+            return await asyncio.to_thread(
+                load_telegram_baseline, partner_id, submission_id, merged
+            )
+        return await asyncio.to_thread(load_earnings_baseline, partner_id)
 
 
-def _projection_or_422(
+async def _projection_or_422(
     partner_id: str, scenario_type: str, value: Decimal, submission_id: Optional[str] = None
 ) -> tuple[Dict[str, Any], Dict[str, Any]]:
     """Load the baseline and run the deterministic calculation, or fail loudly."""
@@ -432,7 +553,7 @@ def _projection_or_422(
             status_code=422,
             detail=f"scenario_type must be one of {', '.join(SCENARIO_TYPES)}.",
         )
-    baseline = _baseline_or_error(partner_id, submission_id)
+    baseline = await _baseline_or_error(partner_id, submission_id)
     try:
         projection = compute_opportunity(baseline, scenario_type, value)
     except ValueError as exc:
@@ -446,14 +567,14 @@ async def get_earnings_baseline(partner_id: str, submission_id: Optional[str] = 
 
     With ``submission_id`` the baseline comes from that Telegram audit.
     """
-    baseline = _baseline_or_error(partner_id, submission_id)
+    baseline = await _baseline_or_error(partner_id, submission_id)
     return EarningsBaseline(**{k: v for k, v in baseline.items() if k in EarningsBaseline.model_fields})
 
 
 @server.post("/earnings-opportunity/simulate", response_model=OpportunityResult)
 async def simulate_earnings_opportunity(req: OpportunityRequest) -> OpportunityResult:
     """Project one scenario deterministically, then have the personas assess it."""
-    projection, baseline = _projection_or_422(
+    projection, baseline = await _projection_or_422(
         req.partner_id, req.scenario_type, req.value, req.submission_id
     )
 
@@ -477,15 +598,12 @@ async def save_simulation(req: OpportunityRequest) -> SavedSimulation:
     using the same deterministic function that produced them, so nothing the
     frontend sends is trusted as a financial result.
     """
-    try:
-        if not partner_exists(req.partner_id):
-            raise HTTPException(status_code=404, detail=f"Partner {req.partner_id} not found.")
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Failed to validate partner: {exc}") from exc
+    with operation("check that the partner exists"):
+        exists = await asyncio.to_thread(partner_exists, req.partner_id)
+    if not exists:
+        raise HTTPException(status_code=404, detail=f"Partner {req.partner_id} not found.")
 
-    projection, baseline = _projection_or_422(
+    projection, baseline = await _projection_or_422(
         req.partner_id, req.scenario_type, req.value, req.submission_id
     )
     # Record which evidence the figures came from, for the History view.
@@ -493,20 +611,16 @@ async def save_simulation(req: OpportunityRequest) -> SavedSimulation:
     if baseline.get("submission_id"):
         projection["scenario_inputs"]["submission_id"] = baseline["submission_id"]
 
-    try:
-        saved = insert_simulation(projection)
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Failed to save simulation: {exc}") from exc
+    with operation("save the simulation"):
+        saved = await asyncio.to_thread(insert_simulation, projection)
     return SavedSimulation(**saved)
 
 
 @server.get("/simulations/{partner_id}", response_model=List[SavedSimulation])
 async def list_simulations(partner_id: str) -> List[SavedSimulation]:
     """Return only this partner's saved simulations, newest first."""
-    try:
-        rows = fetch_simulations(partner_id)
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Failed to load simulations: {exc}") from exc
+    with operation("load the saved simulations"):
+        rows = await asyncio.to_thread(fetch_simulations, partner_id)
     return [SavedSimulation(**row) for row in rows]
 
 
@@ -523,12 +637,11 @@ async def latest_telegram_submission(partner_id: str):
     ``ai_analysis`` is the merged output of the existing pipeline, in the same
     shape the website already renders for uploads.
     """
-    try:
-        latest = telegram_store.get_latest_complete(partner_id)
-    except Exception as exc:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to load the Telegram audit: {exc}"
-        ) from exc
+    # This is the first call the dashboard makes on load, and it polls it, so
+    # it is also the first thing to break when the database is down - the
+    # endpoint whose bare 500 said nothing. It now answers 503 with the reason.
+    with operation("load the Telegram audit"):
+        latest = await asyncio.to_thread(telegram_store.get_latest_complete, partner_id)
     if latest is None:
         return {"status": "none", "submission": None, "ai_analysis": None}
 
@@ -576,12 +689,10 @@ class TelegramSeenRequest(BaseModel):
 @server.post("/telegram/submissions/seen")
 async def mark_telegram_submission_seen(req: TelegramSeenRequest):
     """Acknowledge a completion notice so it is not shown again."""
-    try:
-        updated = telegram_store.mark_seen(req.submission_id, req.partner_id)
-    except Exception as exc:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to update the submission: {exc}"
-        ) from exc
+    with operation("update the submission"):
+        updated = await asyncio.to_thread(
+            telegram_store.mark_seen, req.submission_id, req.partner_id
+        )
     if not updated:
         raise HTTPException(status_code=404, detail="Submission not found for this partner.")
     return {"status": "ok"}
@@ -591,28 +702,32 @@ async def mark_telegram_submission_seen(req: TelegramSeenRequest):
 @server.get("/audit/history/{partner_id}")
 async def audit_partner_history(partner_id: str):
     """
-    Query partner's 30-day history from Supabase and run full audit pipeline.
+    Query the partner's history from Postgres and run the full audit pipeline.
     Used by the 'Discover how you can earn more' CTA.
-    """
-    try:
-        # Load data from Supabase
-        db_data = load_partner_history_from_db(partner_id)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to load partner history: {e}")
 
-    # Run audit pipeline with DB-sourced data (no PDF/images needed)
-    ai_result = run_audit(
-        partner_id=db_data["partner_id"],
-        partner_profile=db_data["partner_profile"],
-        pdf_paths=[],
-        image_paths=[],
-        platform=db_data["platform"],
-        contract_versions=db_data["contract_versions"],
-        transactions=db_data["transactions"],
-        reconciliation_predictions=db_data.get("reconciliation_predictions", []),
-    )
+    Both steps run in a worker thread. `run_audit` is the longest-running call
+    in the project - it reads the database, calls an LLM and walks every
+    transaction - and it is ordinary blocking code. Called directly inside this
+    ``async def`` it held the event loop for its whole duration, which froze
+    the live earnings stream and every other request until it finished. The
+    incentive endpoint below already did this correctly; this one was the
+    exception, and it was the slowest path in the app.
+    """
+    with operation("load the partner history", not_found=(ValueError,)):
+        db_data = await asyncio.to_thread(load_partner_history_from_db, partner_id)
+
+    with operation("run the full audit"):
+        ai_result = await asyncio.to_thread(
+            run_audit,
+            partner_id=db_data["partner_id"],
+            partner_profile=db_data["partner_profile"],
+            pdf_paths=[],
+            image_paths=[],
+            platform=db_data["platform"],
+            contract_versions=db_data["contract_versions"],
+            transactions=db_data["transactions"],
+            reconciliation_predictions=db_data.get("reconciliation_predictions", []),
+        )
 
     serialized = serialize_audit_state(ai_result)
     if serialized.get("status") == "error":
@@ -629,11 +744,16 @@ async def audit_partner_history(partner_id: str):
     serialized["evidence_mode"] = "full_audit"
     serialized["evidence_mode_label"] = "Full Audit"
     serialized["evidence_source"] = "demonstration_history"
+    # Deliberately non-fatal and deliberately not an `operation(...)`: hours
+    # worked is one display field, and the audit result behind it is worth far
+    # more than this. The failure travels in the payload so the page can say
+    # the field is missing, and it is logged so it is not lost.
     try:
-        serialized["hours_worked"] = history_hours_by_platform(
-            db_data["partner_id"], db_data.get("platforms", [])
+        serialized["hours_worked"] = await asyncio.to_thread(
+            history_hours_by_platform, db_data["partner_id"], db_data.get("platforms", [])
         )
     except Exception as exc:
+        logger.warning("Hours worked could not be loaded for %s: %s", partner_id, exc)
         serialized["hours_worked"] = {"error": f"Hours worked could not be loaded: {exc}"}
 
     return {
@@ -668,18 +788,20 @@ class IncentiveAuditRequest(BaseModel):
     incentive_type: Optional[Literal["daily_target", "weekly_target", "period_target"]] = None
 
 
-def _incentive_evidence_for(req: IncentiveAuditRequest) -> IncentiveEvidence:
+async def _incentive_evidence_for(req: IncentiveAuditRequest) -> IncentiveEvidence:
     if req.source == "history":
-        try:
-            return load_history_evidence(req.partner_id)
-        except ValueError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        with operation("load the incentive evidence", not_found=(ValueError,)):
+            return await asyncio.to_thread(load_history_evidence, req.partner_id)
     if not req.submission_id:
         raise HTTPException(status_code=422, detail="submission_id is required when source is telegram.")
-    try:
-        merged = telegram_store.get_submission_result(req.partner_id, req.submission_id)
-    except Exception as exc:
-        raise HTTPException(status_code=404, detail="Telegram submission not found for this partner.") from exc
+    # This read used to turn *every* exception into "Telegram submission not
+    # found", so a database outage was reported to the partner as missing
+    # evidence - a wrong answer, not just a vague one. Only a genuinely absent
+    # row is a 404 now, and that case is the `if not stored` below.
+    with operation("load the Telegram submission"):
+        merged = await asyncio.to_thread(
+            telegram_store.get_submission_result, req.partner_id, req.submission_id
+        )
     stored = (merged or {}).get("incentive_evidence")
     if not stored:
         if (merged or {}).get("details_purged"):
@@ -698,17 +820,15 @@ def _incentive_evidence_for(req: IncentiveAuditRequest) -> IncentiveEvidence:
 @server.post("/audit/incentive")
 async def audit_incentive(req: IncentiveAuditRequest):
     """Why didn't I get my incentive? Then, separately, which structure fits better."""
-    evidence = _incentive_evidence_for(req)
+    evidence = await _incentive_evidence_for(req)
     # The 30-day audit (records on file) compares five days; a Telegram
     # "Didn't get your incentive?" check compares only the one day sent.
     fit_days = FULL_AUDIT_FIT_DAYS if req.source == "history" else INCENTIVE_CHECK_FIT_DAYS
-    try:
+    with operation("run the incentive audit"):
         report = await asyncio.to_thread(
             build_incentive_report, evidence, default_store(), req.platform, req.period_date, req.incentive_type,
             fit_days,
         )
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Incentive audit failed: {exc}") from exc
     return {"status": "Incentive Audit Complete", **_json_safe(report)}
 
 
@@ -734,26 +854,39 @@ async def synthetic_audit_endpoint(data: SyntheticDataUpload):
     import os
     import json
 
-    # Write uploaded JSON to temp directory to reuse existing load_synthetic_data
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # Write the uploaded JSON files
-        with open(os.path.join(tmpdir, "partners.json"), "w") as f:
-            json.dump(data.partners_json, f)
-        with open(os.path.join(tmpdir, "settlements.json"), "w") as f:
-            json.dump(data.settlements_json, f)
-        with open(os.path.join(tmpdir, "earnings.json"), "w") as f:
-            json.dump(data.earnings_json, f)
-        with open(os.path.join(tmpdir, "ground_truth.json"), "w") as f:
-            json.dump(data.ground_truth_json, f)
-        if data.ground_truth_layer2_json:
-            with open(os.path.join(tmpdir, "ground_truth_layer2.json"), "w") as f:
-                json.dump(data.ground_truth_layer2_json, f)
+    from synthetic_verification import build_aggregate_report
 
-        # Run the existing verification engine
-        evaluations = run_full_verification(tmpdir)
-        from synthetic_verification import build_aggregate_report
-        dataset = load_synthetic_data(tmpdir)
-        aggregate = build_aggregate_report(evaluations, dataset)
+    def _verify():
+        """Write the uploaded files and verify them, off the event loop.
+
+        The whole body runs in one worker thread rather than being awaited
+        piece by piece: it writes files, walks every transaction and builds the
+        report, all of it blocking. Left on the event loop it would freeze the
+        live earnings stream and every other request for the duration, which is
+        the same fault the 30-day audit had.
+
+        The temporary directory is created and removed inside this function so
+        it cannot outlive the thread that uses it.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            files = {
+                "partners.json": data.partners_json,
+                "settlements.json": data.settlements_json,
+                "earnings.json": data.earnings_json,
+                "ground_truth.json": data.ground_truth_json,
+            }
+            if data.ground_truth_layer2_json:
+                files["ground_truth_layer2.json"] = data.ground_truth_layer2_json
+            for name, payload in files.items():
+                with open(os.path.join(tmpdir, name), "w", encoding="utf-8") as f:
+                    json.dump(payload, f)
+
+            evaluations = run_full_verification(tmpdir)
+            dataset = load_synthetic_data(tmpdir)
+            return build_aggregate_report(evaluations, dataset)
+
+    with operation("run the synthetic verification"):
+        aggregate = await asyncio.to_thread(_verify)
 
     # Build aggregate response compatible with frontend
 

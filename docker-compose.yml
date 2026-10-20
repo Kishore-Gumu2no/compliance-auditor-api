@@ -78,10 +78,9 @@ services:
       - DB_NAME=postgres
       - DB_USER=postgres
       - DB_PASSWORD=postgres
-      - SUPABASE_URL=http://rest:3000
-      # SUPABASE_KEY is deliberately not set here. It is a key, and this file is
-      # committed; it arrives from .env / Backend/.env through `env_file` above
-      # (copy .env.example to .env if you have not already).
+      # Secrets (GROQ_API_KEY, QDRANT_API_KEY, TELEGRAM_BOT_TOKEN) are
+      # deliberately not set here: this file is committed. They arrive from
+      # .env / Backend/.env through `env_file` above.
       - TESSERACT_PATH=/usr/bin/tesseract
     volumes:
       - ./Backend/real_laws.json:/app/real_laws.json:ro
